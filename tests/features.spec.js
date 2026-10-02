@@ -128,6 +128,7 @@ test('roll saves the final state before walking, plays sounds, buys a house and 
   await startLocalGame(page);
   await expect(page.locator('#sound-button')).toHaveAttribute('aria-pressed', 'true');
   await observeMovement(page);
+  await page.evaluate(() => { window.__featureDiceElement = document.querySelector('#dice-display .die-face'); });
 
   await page.getByRole('button', { name: '掷骰子', exact: true }).click();
   await expect(page.locator('#dice-display')).toHaveClass(/is-rolling/);
@@ -142,6 +143,7 @@ test('roll saves the final state before walking, plays sounds, buys a house and 
   expect(await page.evaluate(() => window.__featurePositions)).toEqual([0, 1, 2, 3]);
   expect(await page.evaluate(() => [window.__featureRollingSeen, window.__featureMovingSeen, window.__featureStepSeen])).toEqual([true, true, true]);
   await expect(page.locator('#dice-display .die-face')).toHaveCount(2);
+  expect(await page.evaluate(() => window.__featureDiceElement === document.querySelector('#dice-display .die-face'))).toBe(true);
   await expect(page.locator('#dice-display .die-face').nth(0)).toHaveAttribute('data-value', '1');
   await expect(page.locator('#dice-display .die-face').nth(1)).toHaveAttribute('data-value', '2');
   const audio = await page.evaluate(() => window.__featureAudio);

@@ -80,7 +80,11 @@ function renderDice(values, rolling = false) {
   dice.classList.toggle('is-rolling', rolling);
   dice.setAttribute('aria-live', rolling ? 'off' : 'polite');
   dice.setAttribute('aria-label', rolling ? '正在摇骰子' : '骰子：' + values.join(' 和 '));
-  dice.innerHTML = values.map(value => `<span class="die-face" data-value="${value}" aria-hidden="true">${diceFaces[value - 1]}</span>`).join('');
+  if (dice.querySelectorAll('.die-face').length !== 2) dice.innerHTML = '<span class="die-face" aria-hidden="true"></span><span class="die-face" aria-hidden="true"></span>';
+  dice.querySelectorAll('.die-face').forEach((face, index) => {
+    face.dataset.value = values[index];
+    face.textContent = diceFaces[values[index] - 1];
+  });
 }
 function startRollVisual(before, audioReady) {
   const actor = getCurrentPlayer(before);
