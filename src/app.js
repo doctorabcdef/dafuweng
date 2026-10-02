@@ -15,7 +15,8 @@ let selectedTile = null;
 let busy = false;
 let connected = false;
 let generation = 0;
-let reading = false;
+let readingGeneration = null;
+let activateOnLoad = false;
 let toastTimer;
 let storageWarning = false;
 let pendingHash = null;
@@ -133,7 +134,8 @@ function render() {
 function acceptSnapshot(snapshot) {
   if (!snapshot || !Number.isInteger(snapshot.revision) || snapshot.revision < 0 || !validateState(snapshot.state)) throw new Error('云端存档格式不正确，请检查数据库配置。');
   if (game && snapshot.state.id !== game.id) throw new Error('对局标识不一致，已阻止覆盖。');
-  game = snapshot.state; session.revision = snapshot.revision; session.endpoint = cloud.config.supabaseUrl; connected = true; persist();
+  game = snapshot.state; session.revision = snapshot.revision; session.endpoint = cloud.config.supabaseUrl; connected = true;
+  persist(activateOnLoad); activateOnLoad = false;
 }
 function errorMessage(error) {
   if (error?.message === 'game_not_found') return '找不到这个云端对局，请检查对局链接。';
@@ -142,10 +144,10 @@ function errorMessage(error) {
   return error?.message || '操作失败，请重试。';
 }
 async function refreshCloud(showError = false) {
-  if (!cloud || session?.mode !== 'cloud' || busy || reading || document.hidden) return;
+  if (!cloud || session?.mode !== 'cloud' || busy || readingGeneration === generation || document.hidden) return;
   if (session.endpoint && session.endpoint !== cloud.config.supabaseUrl) return;
   const currentGeneration = generation, token = session.token;
-  reading = true;
+  readingGeneration = currentGeneration;
   try {
     const snapshot = await cloud.read(token);
     if (currentGeneration !== generation || busy || session?.token !== token) return;
@@ -154,7 +156,7 @@ async function refreshCloud(showError = false) {
   } catch (error) {
     if (currentGeneration !== generation) return;
     connected = false; render(); if (showError) toast(errorMessage(error));
-  } finally { reading = false; }
+  } finally { if (readingGeneration === currentGeneration) readingGeneration = null; }
 }
 function secureDie() {
   const sample = new Uint8Array(1);
@@ -269,7 +271,7 @@ $('share-copy').onclick = async () => {
   catch { $('share-link').select(); toast('请长按或按 Ctrl+C 复制链接。'); }
 };
 async function restore() {
-  generation++; connected = false;
+  generation++; connected = false; activateOnLoad = false;
   let stored = readStored(storage, STORAGE_KEY);
   if (stored?.state) stored = readStored(storage, cacheKey(stored), stored);
   const hasRoom = new URLSearchParams(location.hash.slice(1)).has('room');
@@ -287,10 +289,10 @@ async function restore() {
   } else { session = null; game = null; }
   render();
   if (session?.mode === 'cloud') {
+    activateOnLoad = true;
     if (!cloud) { toast('这是云端对局，请先配置相同的云端项目后恢复。'); return; }
     if (session.endpoint && session.endpoint !== cloud.config.supabaseUrl) { toast('当前云端配置与存档不一致，请在设置中使用原项目。'); return; }
     await refreshCloud(true);
-    if (game) persist(true);
   } else if (!game) openSetup();
 }
 window.addEventListener('hashchange', () => { if (!busy) restore(); else pendingHash = location.hash; });

@@ -43,7 +43,7 @@ GitHub Pages 只托管静态网页，不运行数据库。没有配置 Supabase 
 
 ## 本地运行与验证
 
-需要 Node.js 22.8+：
+需要 Node.js 24+：
 
 ```sh
 npm ci

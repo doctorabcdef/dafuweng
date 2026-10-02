@@ -10,7 +10,7 @@
     "test:browser": "playwright test"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
