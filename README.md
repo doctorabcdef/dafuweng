@@ -4,6 +4,8 @@
 
 网页地址：<https://doctorabcdef.github.io/dafuweng/>
 
+本仓库的线上版本已接入 Supabase 云存档，新对局默认选择云端。第一次换设备时打开“分享对局”生成的完整链接，之后每台设备直接打开首页就会恢复该设备上次进入的对局。已有本机对局点击“分享对局”即可保留进度转入云端。
+
 ## 保存和跨设备续玩
 
 - **本机对局**：每次操作自动保存到当前浏览器，再次打开自动恢复。清除网站数据、无痕模式、换浏览器或设备无法恢复本机存档。
@@ -14,7 +16,7 @@
 
 这是朋友之间共享操作的棋盘：所有拿到链接的人都能操作当前回合，没有账号或独占玩家席位。不要公开分享私人对局链接。
 
-## 云端初始化（一次）
+## 云端初始化（部署副本时使用）
 
 GitHub Pages 只托管静态网页，不运行数据库。没有配置 Supabase 时网页仍可游玩，但**只能本机保存，尚不能跨设备同步**。
 
@@ -34,6 +36,10 @@ GitHub Pages 只托管静态网页，不运行数据库。没有配置 Supabase 
 也可以在网页右上角设置中临时填写 URL 和公开密钥进行调试；这种方式需要在每台设备分别填写。推荐使用上面的仓库变量配置。`service_role` 和 `sb_secret_...` 密钥不能放在网页、仓库、对局链接或公开变量里。
 
 数据库使用 256 位随机房间密钥，链接中的密钥只放在 URL fragment；数据库仅保存 SHA-256 哈希。底层表禁止客户端直接访问，仅三个 RPC 允许凭房间密钥操作。保存时锁定该行并检查 revision，版本冲突会读取最新进度并让玩家重新操作。房间链接持有者受信任；规则与骰子在浏览器运行，不具备竞技防作弊能力。创建接口面向公开客户端，生产使用请在 Supabase 控制台关注配额与异常请求。
+
+### 数据库权限审查
+
+线上已验证 `anon` 与 `authenticated` 均无底层表读写权限，云端 RPC 正确拒绝错误密钥和旧版本写入。Supabase Advisor 的“RLS 无策略”和“公开可执行 SECURITY DEFINER”提示属于本应用有意的链接授权设计：私有表默认拒绝所有客户端访问，三个公开 RPC 用完整密钥校验授权，固定 SQL 仅操作对应房间且设置空 `search_path`。请勿为消除提示而给表添加全公开策略。[RLS 提示说明](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)、[匿名 RPC 审查](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)、[已登录角色 RPC 审查](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)。
 
 ## 玩法
 
