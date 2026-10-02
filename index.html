@@ -8,6 +8,7 @@
     <title>大富翁 · 环球之旅</title>
     <link rel="stylesheet" href="./src/styles.css" />
     <script src="./config.js"></script>
+    <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/"}}</script>
     <script type="module" src="./src/app.js"></script>
   </head>
   <body>
@@ -27,27 +28,36 @@
 
       <main>
         <section class="game-heading" aria-labelledby="page-heading">
-          <div><p class="eyebrow"><span class="tiny-star" aria-hidden="true">✳</span> 带上动物伙伴，环游全世界</p><h1 id="page-heading">好运，从这一掷开始。</h1></div>
-          <p class="heading-note">每到一个国家，就多一种可能。<br />和朋友一起，把世界变成旅行的主场。</p>
+          <div><p class="eyebrow"><span class="tiny-star" aria-hidden="true">✳</span> 一个小小世界，一场大大冒险</p><h1 id="page-heading">把世界，变成你的主场。</h1></div>
+          <p class="heading-note">和动物伙伴一起，掷出下一站。<br />收集地标、遇见惊喜，让金币叮当作响。</p>
         </section>
 
         <div class="game-layout">
           <section class="board-section" aria-label="大富翁棋盘">
-            <div class="board-topline"><span><span class="live-dot" aria-hidden="true"></span> 环球棋盘</span><span>32 个转角，无限种可能</span></div>
-            <div id="board" class="board">
-              <div id="board-center" class="board-center">
-                <div class="center-top"><span class="map-label">WORLD EXPLORERS</span><span id="round-label" class="round-label">第 1 回合</span></div>
-                <div class="center-art" aria-hidden="true">
-                  <svg viewBox="0 0 260 95" fill="none"><path d="M14 85h232" stroke="#25334a" stroke-width="2" stroke-linecap="round"/><path d="M34 83V53h36v30M28 53l24-20 24 20" fill="#e8c971" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><path d="M48 84V66h10v18M96 83V19h35v64M88 20h50M101 11h25v8" fill="#a8c5c2" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><path d="M103 31h6m9 0h6m-21 13h6m9 0h6m-21 13h6m9 0h6m-21 13h6m9 0h6" stroke="#25334a" stroke-width="3"/><path d="M153 83V44h43v39M147 45l28-22 27 22" fill="#e99582" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><path d="M162 57h7m10 0h7m-24 12h7m10 0h7" stroke="#25334a" stroke-width="3"/><path d="M223 83V57M223 68c-24 1-16-29 0-31 15 2 24 33 0 31Z" fill="#afbf9d" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><circle cx="64" cy="15" r="6" fill="#e8c971"/><path d="M214 17h12m-6-6v12M17 31h8m-4-4v8" stroke="#e99582" stroke-width="2" stroke-linecap="round"/></svg>
+            <div class="board-topline"><span><span class="live-dot" aria-hidden="true"></span> 你的环球小世界</span><span>32 站旅程 · 每一步都有惊喜</span></div>
+            <div id="board-stage" class="board-stage">
+              <div class="world-viewport">
+                <canvas id="world-canvas" aria-label="立体环球棋盘。可以拖动旋转、缩放，也可以使用下方国家卡片选择地块。" role="img"></canvas>
+                <div class="world-stamp" aria-hidden="true"><span>THE WORLD IS YOURS</span><strong>下一站，心之所向。</strong></div>
+                <button id="reset-camera" class="camera-reset" type="button" aria-label="恢复棋盘默认视角" title="恢复默认视角"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 7a6.5 6.5 0 1 1-.2 5M4 7V3m0 4h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>回到初始视角</span></button>
+                <p class="stage-guide"><span class="guide-desktop">拖动旋转 · 滚轮缩放</span><span class="guide-touch">单指旋转 · 双指缩放</span><span class="guide-separator" aria-hidden="true">/</span><span>点击地块查看地契</span></p>
+              </div>
+              <div class="board-navigation-heading"><span>目的地速览</span><small>左右滑动，选择一个国家 <span aria-hidden="true">↔</span></small></div>
+              <div id="board" class="board" aria-label="国家地块与棋子位置">
+                <div class="fallback-map" aria-hidden="true">
+                  <span class="map-label">YOUR LITTLE WORLD</span>
+                  <svg class="fallback-globe" viewBox="0 0 180 180" fill="none"><circle cx="90" cy="90" r="69" fill="#e7eddf" stroke="#263348" stroke-width="2"/><ellipse cx="90" cy="90" rx="30" ry="69" stroke="#93a388" stroke-width="1.5"/><path d="M21 90h138M33 51h114M33 129h114" stroke="#93a388" stroke-width="1.5"/><path d="m42 52 15-10 18 8 4 15-13 8-5 19-16-6-7-17ZM105 87l22-8 16 11-4 19-11 9-10 20-16-11-6-22Z" fill="#c9a456" stroke="#263348" stroke-width="1.5" stroke-linejoin="round"/><path d="m139 29 5-13 5 13 13 5-13 5-5 13-5-13-13-5Z" fill="#edcc77" stroke="#263348" stroke-width="1.5"/></svg>
+                  <strong>世界那么大，一起去看看。</strong><span>一掷骰子，一段新故事。</span>
                 </div>
-                <p id="turn-label" class="turn-label">世界那么大，一起去看看</p>
-                <div id="dice-display" class="dice-display" aria-label="等待掷骰子" aria-live="polite"><span class="die-face" aria-hidden="true">⚄</span><span class="die-face" aria-hidden="true">⚂</span></div>
-                <p id="event-text" class="event-text" aria-live="polite">选一位动物伙伴，从第一步开始你的环球故事。</p>
-                <div id="actions" class="game-actions"></div>
-                <div class="center-bottom"><span class="center-route" aria-hidden="true">● ─ ─ ─ ─ →</span><span>路过起点，领取新的出发基金</span></div>
               </div>
             </div>
-            <div class="board-caption"><span><span class="caption-icon" aria-hidden="true">↗</span> 点击任意地块，查看价格与租金</span><span>财富与好运，缺一不可</span></div>
+            <p id="world-fallback" class="world-fallback" role="status" hidden>当前设备暂不支持 3D，已切换平面棋盘。</p>
+            <div id="board-center" class="board-center action-deck" aria-label="当前回合与游戏操作">
+              <div class="center-top"><span class="map-label">YOUR NEXT MOVE</span><span id="round-label" class="round-label">第 1 回合</span></div>
+              <div class="action-main"><div class="turn-copy"><p id="turn-label" class="turn-label">世界那么大，一起去看看</p><p id="event-text" class="event-text" aria-live="polite">选一位动物伙伴，从第一步开始你的环球故事。</p></div><div class="dice-readout"><span class="dice-readout-label">本次点数</span><div id="dice-display" class="dice-display" aria-label="等待掷骰子" aria-live="polite"><span class="die-face" aria-hidden="true">⚄</span><span class="die-face" aria-hidden="true">⚂</span></div></div></div>
+              <div id="actions" class="game-actions"></div>
+              <div class="center-bottom"><span class="coin-3d" aria-hidden="true">¥</span><span>经过起点，领取 <strong>¥2,000</strong> 出发基金</span></div>
+            </div>
           </section>
 
           <aside class="game-sidebar" aria-label="玩家与地产">
@@ -100,6 +110,19 @@
       <p class="modal-description">云端对局可通过同一链接在其他设备打开并继续。持有链接的人可以查看和操作这场对局，请只分享给一起玩的朋友。</p>
       <div class="field"><label for="share-link">当前对局链接</label><input id="share-link" type="url" readonly /></div>
       <div class="modal-actions"><button id="share-close" class="button secondary" type="button">关闭</button><button id="share-copy" class="button primary" type="button">复制链接 <span aria-hidden="true">↗</span></button></div>
+    </dialog>
+    <dialog id="chance-dialog" class="modal chance-modal" aria-labelledby="chance-title" aria-describedby="chance-description">
+      <div class="modal-eyebrow">A LITTLE TWIST OF FATE</div>
+      <p class="chance-intro">旅途中，总有意想不到的相遇。</p>
+      <article id="chance-card" class="chance-card">
+        <div class="chance-card-top" aria-hidden="true"><span>CHANCE</span><span>✦</span></div>
+        <div class="chance-emblem" aria-hidden="true"><span>✦</span><i></i><i></i></div>
+        <p class="chance-card-label">环球机遇卡</p>
+        <h2 id="chance-title">下一份惊喜，正在路上。</h2>
+        <p id="chance-description">看看这张卡片，会为你的旅程带来什么。</p>
+        <div class="chance-card-bottom" aria-hidden="true"><span>GOOD THINGS AHEAD</span><span>✧</span></div>
+      </article>
+      <div class="modal-actions"><button id="chance-close" class="button primary" type="button">收好好运，继续旅程 <span aria-hidden="true">↗</span></button></div>
     </dialog>
     <dialog id="animal-dialog" class="modal animal-modal" aria-labelledby="animal-heading">
       <div class="modal-eyebrow">PICK YOUR TRAVEL BUDDY</div>

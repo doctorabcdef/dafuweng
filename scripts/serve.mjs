@@ -5,7 +5,13 @@ const root = resolve(process.env.SERVE_DIR || '.');
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 createServer(async (req, res) => {
   try {
-    const path = resolve(root, '.' + decodeURIComponent(new URL(req.url, 'http://localhost').pathname).replace(/\/$/, '/index.html'));
+    let requestPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname).replace(/\/$/, '/index.html');
+    if (!process.env.SERVE_DIR && requestPath.startsWith('/vendor/')) {
+      requestPath = requestPath.startsWith('/vendor/addons/')
+        ? '/node_modules/three/examples/jsm/' + requestPath.slice('/vendor/addons/'.length)
+        : '/node_modules/three/build/' + requestPath.slice('/vendor/'.length);
+    }
+    const path = resolve(root, '.' + requestPath);
     if (!path.startsWith(root + sep) || path.split(sep).some(part => part.startsWith('.'))) {
       res.writeHead(403); res.end(); return;
     }

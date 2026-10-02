@@ -24,6 +24,22 @@ export function getPlayerAnimal(player, index = 0) {
   return ANIMAL_BY_ID.get(player?.animal) ?? ANIMALS[(Number.isInteger(index) && index >= 0 ? index : 0) % ANIMALS.length];
 }
 
+export const CHANCE_CARDS = Object.freeze([
+  { id: 'dividend', title: '创业分红', description: '你的投资获得回报，领取 ¥1,200。', kind: 'income', amount: 1200 },
+  { id: 'repairs', title: '房屋修缮', description: '支付房屋维护费用 ¥600。', kind: 'expense', amount: -600 },
+  { id: 'lottery', title: '幸运奖金', description: '幸运降临，领取 ¥800 奖金。', kind: 'income', amount: 800 },
+  { id: 'travel', title: '旅行开销', description: '为环球旅行支付 ¥1,000。', kind: 'expense', amount: -1000 },
+  { id: 'return-start', title: '返回起点', description: '直接返回起点，并领取 ¥2,000。', kind: 'move', amount: 2000, destination: 0 },
+  { id: 'go-to-jail', title: '前往监狱', description: '直接前往监狱，最多停留 2 回合。经过起点不领取奖金。', kind: 'jail', destination: 7 },
+  { id: 'city-award', title: '城市建设奖', description: '建设有功，领取 ¥1,500 奖励。', kind: 'income', amount: 1500 },
+  { id: 'treasure', title: '城市宝藏', description: '发现藏在街角的宝藏，领取 ¥500。', kind: 'income', amount: 500 },
+].map(Object.freeze));
+const CHANCE_BY_ID = new Map(CHANCE_CARDS.map(card => [card.id, card]));
+
+export function getChanceCard(state) {
+  return CHANCE_BY_ID.get(state?.chanceCard?.id) ?? null;
+}
+
 export const BOARD = Object.freeze([
   { id: 0, name: '起点', type: 'start' },
   { id: 1, name: '中国', type: 'property', color: '#22d3ee', price: 1000, baseRent: 150, group: 'coast' },
@@ -61,7 +77,7 @@ export const BOARD = Object.freeze([
 
 const ESTATES = BOARD.filter(tile => tile.type === 'property');
 const MAX_MONEY = 1_000_000_000;
-const PHASES = new Set(['roll', 'buy', 'end', 'gameover']);
+const PHASES = new Set(['roll', 'buy', 'chance', 'end', 'gameover']);
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const money = value => Number.isSafeInteger(value) && Math.abs(value) <= MAX_MONEY;
@@ -95,7 +111,7 @@ export function createGame({ names = ['小橙', '小蓝'], startingCash = 15000,
   return {
     schemaVersion: 1, id: gameId, createdAt, updatedAt: createdAt, round: 1, currentPlayer: 0, phase: 'roll', players,
     properties: Object.fromEntries(ESTATES.map(tile => [tile.id, { ownerId: null, level: 0, mortgaged: false }])),
-    dice: null, lastEvent, logs: [{ id: '1', text: lastEvent }], winnerId: null,
+    dice: null, lastEvent, logs: [{ id: '1', text: lastEvent }], winnerId: null, chanceCard: null,
   };
 }
 
@@ -167,6 +183,8 @@ export function validateState(value) {
       if (property.ownerId === null && property.mortgaged) return false;
     }
     if (value.dice !== null && (!Array.isArray(value.dice) || value.dice.length !== 2 || !value.dice.every(die => Number.isInteger(die) && die >= 1 && die <= 6))) return false;
+    if (value.chanceCard !== undefined && value.chanceCard !== null &&
+        (!isRecord(value.chanceCard) || !CHANCE_BY_ID.has(value.chanceCard.id) || !ids.has(value.chanceCard.playerId))) return false;
     if (!shortString(value.lastEvent, 600) || !Array.isArray(value.logs) || value.logs.length < 1 || value.logs.length > 60) return false;
     if (value.logs.some(log => !isRecord(log) || typeof log.id !== 'string' || !/^\d{1,15}$/.test(log.id) || !shortString(log.text, 600))) return false;
     const alive = value.players.filter(player => !player.bankrupt);
@@ -176,6 +194,10 @@ export function validateState(value) {
     if (value.phase === 'buy') {
       const tile = BOARD[getCurrentPlayer(value).position];
       if (tile.type !== 'property' || value.properties[tile.id].ownerId !== null) return false;
+    }
+    if (value.phase === 'chance') {
+      const player = getCurrentPlayer(value);
+      if (BOARD[player.position].type !== 'chance' || player.jailed || !value.dice || value.chanceCard != null) return false;
     }
     return true;
   } catch {
@@ -226,18 +248,25 @@ function jail(state, player, trace) {
   log(state, `${player.name}进入监狱，最多停留 2 回合；掷出双数或支付 ¥500 可提前出狱。`);
 }
 
-function chance(state, player, trace) {
-  // Dice + game progress choose the card deterministically, so synchronized
-  // devices replay exactly the same action without a second random draw.
-  const card = (state.dice[0] * 7 + state.dice[1] * 3 + state.round + state.currentPlayer + player.position) % 8;
-  if (card === 0) { player.cash += 1200; log(state, `奇遇 · 创业分红！${player.name}获得 ¥1,200。`); }
-  if (card === 1) { player.cash -= 600; log(state, `奇遇 · 房屋修缮，${player.name}支付 ¥600。`); }
-  if (card === 2) { player.cash += 800; log(state, `奇遇 · 幸运奖金！${player.name}获得 ¥800。`); }
-  if (card === 3) { player.cash -= 1000; log(state, `奇遇 · 旅行开销，${player.name}支付 ¥1,000。`); }
-  if (card === 4) { movePlayer(player, 0, trace, 'chance'); player.cash += 2000; log(state, `奇遇 · 返回起点！${player.name}领取 ¥2,000。`); }
-  if (card === 5) jail(state, player, trace);
-  if (card === 6) { player.cash += 1500; log(state, `奇遇 · 城市建设奖！${player.name}获得 ¥1,500。`); }
-  if (card === 7) { player.cash += 500; log(state, `奇遇 · 发现城市宝藏！${player.name}获得 ¥500。`); }
+function drawChance(state, player, trace) {
+  // The draw is an explicit, atomic action. Its deterministic selection and
+  // recorded card survive reloads; only the pending 'chance' phase can draw.
+  const index = (state.dice[0] * 7 + state.dice[1] * 3 + state.round + state.currentPlayer + player.position) % CHANCE_CARDS.length;
+  const card = CHANCE_CARDS[index];
+  state.phase = 'end';
+  state.chanceCard = { id: card.id, playerId: player.id };
+  if (card.kind === 'jail') {
+    jail(state, player, trace);
+  } else {
+    if (card.kind === 'move') movePlayer(player, card.destination, trace, 'chance');
+    player.cash += card.amount;
+    log(state, `奇遇 · ${card.title}！${player.name}${card.amount < 0 ? '支付' : '领取'} ¥${Math.abs(card.amount).toLocaleString('en-US')}。`);
+  }
+  warnDebt(state, player);
+}
+
+function warnDebt(state, player) {
+  if (player.cash < 0) log(state, `${player.name}资金不足，还差 ¥${(-player.cash).toLocaleString('en-US')}。请抵押地产偿还债务，或宣布破产。`);
 }
 
 function land(state, player, trace) {
@@ -261,7 +290,9 @@ function land(state, player, trace) {
     player.cash -= 800;
     log(state, `${player.name}缴纳城市税 ¥800。`);
   } else if (tile.type === 'chance') {
-    chance(state, player, trace);
+    state.phase = 'chance';
+    state.chanceCard = null;
+    log(state, `${player.name}来到机遇格，请抽取一张机遇卡。`);
   } else if (tile.type === 'goToJail') {
     jail(state, player, trace);
   } else if (tile.type === 'start') {
@@ -271,7 +302,7 @@ function land(state, player, trace) {
   } else {
     log(state, `${player.name}来到自由公园，休息一下。`);
   }
-  if (player.cash < 0) log(state, `${player.name}资金不足，还差 ¥${(-player.cash).toLocaleString('en-US')}。请抵押地产偿还债务，或宣布破产。`);
+  warnDebt(state, player);
 }
 
 /** Atomically return a new state. The caller supplies dice and optionally now. */
@@ -311,6 +342,7 @@ function executeAction(previous, action, trace) {
       requireCash(0);
       if (!Array.isArray(action.dice) || action.dice.length !== 2 || !action.dice.every(die => Number.isInteger(die) && die >= 1 && die <= 6)) throw new Error('骰子必须是两个 1–6 的整数。');
       state.dice = [...action.dice];
+      state.chanceCard = null;
       const steps = state.dice[0] + state.dice[1];
       log(state, `${player.name}掷出 ${state.dice[0]} + ${state.dice[1]} = ${steps} 点。`);
       if (player.jailed > 0) {
@@ -331,6 +363,10 @@ function executeAction(previous, action, trace) {
       land(state, player, trace);
       break;
     }
+    case 'DRAW_CHANCE':
+      requirePhase('chance');
+      drawChance(state, player, trace);
+      break;
     case 'BUY': {
       requirePhase('buy');
       const tile = BOARD[player.position];
@@ -415,16 +451,28 @@ function executeAction(previous, action, trace) {
  * Non-roll or mismatched snapshots return an empty path instead of guessing.
  */
 export function getRollMovement(before, after) {
+  return getMovement(before, after, 'ROLL');
+}
+
+/** The separately committed card draw can redirect a token after it stopped. */
+export function getChanceMovement(before, after) {
+  return getMovement(before, after, 'DRAW_CHANCE');
+}
+
+function getMovement(before, after, type) {
   const playerId = before?.players?.[before.currentPlayer]?.id ?? null;
   const empty = { playerId, steps: [] };
-  if (!validateState(before) || !validateState(after) || before.id !== after.id || before.phase !== 'roll' ||
-      before.currentPlayer !== after.currentPlayer || before.round !== after.round || !after.dice || !['buy', 'end'].includes(after.phase)) return empty;
+  const expectedPhase = type === 'ROLL' ? 'roll' : 'chance';
+  const resultPhases = type === 'ROLL' ? ['buy', 'chance', 'end'] : ['end'];
+  if (!validateState(before) || !validateState(after) || before.id !== after.id || before.phase !== expectedPhase ||
+      before.currentPlayer !== after.currentPlayer || before.round !== after.round || !after.dice || !resultPhases.includes(after.phase)) return empty;
   const trace = { playerId, steps: [] };
   try {
-    const replay = executeAction(before, { type: 'ROLL', dice: after.dice, now: after.updatedAt }, trace);
+    const replay = executeAction(before, { type, dice: after.dice, now: after.updatedAt }, trace);
     const expectedPlayer = getCurrentPlayer(replay);
     const actualPlayer = getCurrentPlayer(after);
     if (replay.phase !== after.phase || expectedPlayer.position !== actualPlayer.position || expectedPlayer.jailed !== actualPlayer.jailed) return empty;
+    if (type === 'DRAW_CHANCE' && (replay.chanceCard.id !== after.chanceCard?.id || replay.chanceCard.playerId !== after.chanceCard?.playerId)) return empty;
     return trace;
   } catch {
     return empty;

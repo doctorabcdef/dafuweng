@@ -1,4 +1,4 @@
-import { BOARD, ANIMALS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getRollMovement, getRent, getNetWorth, canBuild, validateState } from './game.js';
+import { BOARD, ANIMALS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getRollMovement, getChanceCard, getChanceMovement, getRent, getNetWorth, canBuild, validateState } from './game.js';
 import { STORAGE_KEY, readStored, writeStored, parseRoom, newRoomToken, checkCloudConfig, CloudStore } from './persistence.js';
 import { createSoundEffects, animationPause } from './effects.js';
 
@@ -27,6 +27,18 @@ let animalTarget = null;
 let setupAnimals = ANIMALS.slice(0, 4).map(animal => animal.id);
 let soundEnabled = readStored(storage, STORAGE_KEY + ':sound', true) !== false;
 const sound = createSoundEffects(soundEnabled);
+let world = null;
+function disableWorld() {
+  try { world?.dispose(); } catch { /* Continue with the accessible board. */ }
+  world = null; document.body.classList.remove('has-webgl');
+  if ($('world-fallback')) $('world-fallback').hidden = false;
+}
+// Load the renderer independently: a device without WebGL can still play and save.
+import('./world.js').then(({ createWorld }) => {
+  world = createWorld({ canvas: $('world-canvas'), onSelect: tileId => { selectedTile = tileId; renderBoard(); renderProperty(); }, onChance: () => perform({ type: 'DRAW_CHANCE' }), onUnavailable: disableWorld });
+  if (!world) disableWorld();
+  else { $('world-fallback').hidden = true; $('reset-camera').onclick = () => world?.resetCamera(); renderBoard(); }
+}).catch(disableWorld);
 const diceFaces = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 const visualPosition = player => presentation?.playerId === player.id ? presentation.position : player.position;
 const cacheKey = value => STORAGE_KEY + ':game:' + (value.mode === 'cloud' ? 'cloud:' + (value.endpoint || '') + ':' + value.token : 'local:' + value.state.id);
@@ -46,6 +58,16 @@ async function finishOperation() {
   const hash = pendingHash; pendingHash = null;
   history.replaceState(null, '', location.pathname + location.search + hash);
   await restore(); return true;
+}
+function showChanceCard() {
+  const card = getChanceCard(game);
+  if (!card || pendingHash !== null) return;
+  $('chance-title').textContent = card.title;
+  $('chance-description').textContent = card.description;
+  $('chance-card').dataset.kind = card.kind;
+  $('chance-card').classList.remove('is-revealed');
+  $('chance-dialog').showModal();
+  requestAnimationFrame(() => $('chance-card').classList.add('is-revealed'));
 }
 function restoreNewerLocalState() {
   if (session?.mode !== 'local' || !game) return false;
@@ -86,8 +108,10 @@ function renderDice(values, rolling = false) {
     face.textContent = diceFaces[values[index] - 1];
   });
 }
-function startRollVisual(before, audioReady) {
+function startRollVisual(before, audioReady, follow = false) {
   const actor = getCurrentPlayer(before);
+  world?.resetCamera();
+  if (world && follow && innerWidth < 880 && !document.hidden) $('world-canvas').scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   const visual = { playerId: actor.id, position: actor.position, stage: 'rolling', dice: [5, 3], message: `${getPlayerAnimal(actor, before.currentPlayer).emoji} ${actor.name}正在摇骰子…` };
   presentation = visual; render();
   Promise.resolve(audioReady).then(() => { if (presentation === visual) sound.roll(); });
@@ -122,13 +146,27 @@ async function animateCommitted(before, after, type, rollLead = Promise.resolve(
         sound.step(); await animationPause(160);
       }
       sound.arrive();
+    } else if (type === 'DRAW_CHANCE') {
+      const movement = getChanceMovement(before, after);
+      if (movement.steps.length && !document.hidden && pendingHash === null) {
+        const actor = getCurrentPlayer(before);
+        presentation = { playerId: actor.id, position: actor.position, stage: 'walking', dice: after.dice, message: after.lastEvent };
+        render(); await animationPause(220);
+        presentation.position = movement.steps.at(-1); renderBoard();
+        await animationPause(200);
+      }
+      sound.arrive();
+      if (getChanceCard(after)?.kind === 'income') world?.celebrate();
+      if (!document.hidden) showChanceCard();
     } else if (type === 'BUY' || type === 'BUILD') {
       const changed = BOARD.find(tile => after.properties[tile.id]?.ownerId && (before.properties[tile.id]?.ownerId !== after.properties[tile.id].ownerId || before.properties[tile.id]?.level !== after.properties[tile.id].level));
-      if (changed) { freshHouse = changed.id; render(); sound.purchase(); await animationPause(450); }
+      if (changed) { freshHouse = changed.id; render(); sound.purchase(); world?.celebrate(); await animationPause(450); }
     }
   } catch { /* The confirmed state is displayed by finishOperation. */ }
 }
 function renderBoard() {
+  try { world?.update(game, { presentation, selectedTile, freshHouse }); } catch { disableWorld(); }
+  const scroll = $('board').scrollLeft;
   document.querySelectorAll('#board > .tile').forEach(tile => tile.remove());
   BOARD.forEach((tile, index) => {
     const node = document.createElement('button');
@@ -147,6 +185,7 @@ function renderBoard() {
     node.onclick = () => { selectedTile = tile.id; renderBoard(); renderProperty(); };
     $('board').append(node);
   });
+  $('board').scrollLeft = scroll;
 }
 function button(text, action, style = 'primary', disabled = false) {
   const node = document.createElement('button');
@@ -161,7 +200,12 @@ function renderProperty() {
   if (!tile) { panel.innerHTML = '<p class="empty-hint">点击棋盘地块，查看地契与管理资产。</p>'; return; }
   const property = game?.properties[tile.id];
   const owner = game?.players.find(player => player.id === property?.ownerId);
-  panel.innerHTML = `<div class="property-detail"><h3>${safe(tile.name)}</h3><p>${tile.price ? `地价 ${money(tile.price)} · ${owner ? safe(owner.name) + ' 持有' : '待购入'}` : '特殊地块'}</p>${property ? `<p>${property.mortgaged ? '已抵押，暂停收租' : '租金 ' + money(getRent(game, tile.id)) + ' · 建筑 ' + property.level + '/3'}</p>` : ''}</div>`;
+  panel.innerHTML = `<div class="property-detail"><h3>${safe(tile.name)}</h3>${world?.landmarks[tile.id] ? `<p class="landmark-name">${safe(world.landmarks[tile.id])}</p>` : ''}<p>${tile.price ? `地价 ${money(tile.price)} · ${owner ? safe(owner.name) + ' 持有' : '待购入'}` : '特殊地块'}</p>${property ? `<p>${property.mortgaged ? '已抵押，暂停收租' : '租金 ' + money(getRent(game, tile.id)) + ' · 建筑 ' + property.level + '/3'}</p>` : ''}</div>`;
+  if (world?.landmarks[tile.id]) {
+    const inspect = document.createElement('button'); inspect.type = 'button'; inspect.className = 'secondary'; inspect.textContent = '近看地标';
+    inspect.onclick = () => { world.focus(tile.id); $('world-canvas').scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); };
+    panel.append(inspect);
+  }
   if (!game || game.phase === 'gameover' || owner?.id !== getCurrentPlayer(game).id) return;
   const controls = document.createElement('div'); controls.className = 'property-actions';
   if (!property.mortgaged) {
@@ -198,7 +242,13 @@ function render() {
       const tile = BOARD[current.position];
       $('actions').append(button('购买 ' + money(tile.price), { type: 'BUY' }, 'primary', current.cash < tile.price));
       $('actions').append(button('暂不购买', { type: 'SKIP_BUY' }, 'secondary'));
+    } else if (game.phase === 'chance') {
+      $('actions').append(button('抽取机遇卡', { type: 'DRAW_CHANCE' }, 'primary chance-draw'));
     } else $('actions').append(button('结束回合', { type: 'END_TURN' }));
+  }
+  if (getChanceCard(game)) {
+    const historyButton = document.createElement('button'); historyButton.type = 'button'; historyButton.className = 'secondary chance-history';
+    historyButton.textContent = '查看上一张机遇卡'; historyButton.disabled = busy; historyButton.onclick = showChanceCard; $('actions').append(historyButton);
   }
   $('players').innerHTML = game.players.map((player, index) => { const animal = getPlayerAnimal(player, index); return `<article class="player-card${index === game.currentPlayer ? ' active' : ''}${player.bankrupt ? ' bankrupt' : ''}" style="--player-color:${safe(player.color)}"><div class="player-top"><button type="button" class="player-avatar avatar-button" data-player-id="${safe(player.id)}" style="background:${safe(player.color)}" aria-label="为${safe(player.name)}更换动物，当前${animal.name}" title="点击更换动物" ${busy || (session?.mode === 'cloud' && !connected) ? 'disabled' : ''}>${animal.emoji}</button><span class="player-name">${safe(player.name)}</span><strong class="player-cash">${money(player.cash)}</strong></div><div class="player-meta"><span>${player.bankrupt ? '已破产' : player.jailed ? '正在监狱' : '位于 ' + safe(BOARD[visualPosition(player)].name)}</span><span>总资产 ${money(getNetWorth(game, player.id))}</span></div></article>`; }).join('');
   $('players').querySelectorAll('.avatar-button').forEach(node => { node.onclick = () => openAnimals({ playerId: node.dataset.playerId }); });
@@ -235,6 +285,8 @@ async function refreshCloud(showError = false) {
         busy = true; animated = true;
         const lead = startRollVisual(before);
         await animateCommitted(before, game, 'ROLL', lead);
+      } else if (isNext && before.phase === 'chance' && getChanceCard(game)) {
+        busy = true; animated = true; await animateCommitted(before, game, 'DRAW_CHANCE');
       } else if (isNext) {
         const purchased = BOARD.some(tile => snapshot.state.properties[tile.id]?.ownerId && (before.properties[tile.id]?.ownerId !== snapshot.state.properties[tile.id].ownerId || before.properties[tile.id]?.level !== snapshot.state.properties[tile.id].level));
         if (purchased) { busy = true; animated = true; await animateCommitted(before, game, 'BUY'); }
@@ -264,7 +316,7 @@ async function perform(action) {
   try {
     const before = game;
     const next = applyAction(game, { ...action, now: Date.now() });
-    const lead = action.type === 'ROLL' ? startRollVisual(before, audioReady) : Promise.resolve();
+    const lead = action.type === 'ROLL' ? startRollVisual(before, audioReady, true) : Promise.resolve();
     if (session.mode === 'cloud') {
       const snapshot = await cloud.save(session.token, session.revision, next);
       acceptSnapshot(snapshot);
@@ -309,6 +361,7 @@ $('sound-button').onclick = () => {
   if (soundEnabled) Promise.resolve(sound.unlock()).then(() => sound.arrive());
 };
 $('animal-close').onclick = () => $('animal-dialog').close();
+$('chance-close').onclick = () => $('chance-dialog').close();
 renderSoundButton();
 function openSetup() {
   if (busy) return;
@@ -394,6 +447,7 @@ $('share-copy').onclick = async () => {
   catch { $('share-link').select(); toast('请长按或按 Ctrl+C 复制链接。'); }
 };
 async function restore() {
+  $('chance-dialog').close();
   generation++; connected = false; activateOnLoad = false;
   let stored = readStored(storage, STORAGE_KEY);
   if (stored?.state) stored = readStored(storage, cacheKey(stored), stored);

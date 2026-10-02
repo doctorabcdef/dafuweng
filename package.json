@@ -15,5 +15,8 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.63.0"
+  },
+  "dependencies": {
+    "three": "0.186.1"
   }
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOARD, PLAYER_COLORS, ANIMALS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getRollMovement, getRent, getNetWorth, canBuild, validateState } from '../src/game.js';
+import { BOARD, PLAYER_COLORS, ANIMALS, CHANCE_CARDS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getChanceCard, getRollMovement, getChanceMovement, getRent, getNetWorth, canBuild, validateState } from '../src/game.js';
 
 const fresh = (names = ['阿橙', '阿蓝']) => createGame({ names }, { id: 'test-game', now: '2026-10-02T00:00:00.000Z' });
 const act = (state, type, extra = {}) => applyAction(state, { type, ...extra });
@@ -193,10 +193,19 @@ test('chance outcomes are deterministic and every card leaves a valid state', ()
     const state = fresh();
     state.round = round;
     const action = { type: 'ROLL', dice: [1, 1] };
-    const result = applyAction(state, action);
-    assert.deepEqual(result, applyAction(state, action));
+    const pending = applyAction(state, action);
+    assert.equal(pending.phase, 'chance');
+    assert.equal(pending.players[0].cash, state.players[0].cash);
+    assert.equal(pending.players[0].position, 2);
+    assert.equal(pending.chanceCard, null);
+    const result = act(pending, 'DRAW_CHANCE');
+    assert.deepEqual(result, act(pending, 'DRAW_CHANCE'));
     assert.equal(validateState(result), true);
-    outcomes.add(result.lastEvent);
+    assert.equal(result.phase, 'end');
+    const card = getChanceCard(result);
+    assert.ok(CHANCE_CARDS.includes(card));
+    assert.equal(result.players[0].cash, state.players[0].cash + (card.amount ?? 0));
+    outcomes.add(card.id);
   }
   assert.equal(outcomes.size, 8);
 });
@@ -237,6 +246,7 @@ test('timestamps stay monotonic and bounded logs survive a long game', () => {
   state = act(state, 'END_TURN');
   for (let index = 0; index < 100; index += 1) {
     state = act(state, 'ROLL', { dice: [1 + index % 6, 1 + (index * 3) % 6] });
+    if (state.phase === 'chance') state = act(state, 'DRAW_CHANCE');
     if (getCurrentPlayer(state).cash < 0) break;
     if (state.phase === 'buy') state = act(state, 'SKIP_BUY');
     state = act(state, 'END_TURN');
@@ -353,24 +363,122 @@ test('roll paths distinguish walking into jail, staying jailed and walking out w
   assert.deepEqual(getRollMovement(inJail, released), { playerId: 'p1', steps: [8, 9, 10, 11] });
 });
 
-test('chance movement traces include the landing tile before returning to start or entering jail', () => {
+test('roll and card movement traces separately stop on chance then return to start or enter jail', () => {
   const before = fresh();
   before.round = 8; // [1,1] landing on 2 selects the existing return-to-start card.
-  const home = act(before, 'ROLL', { dice: [1, 1] });
+  const pendingHome = act(before, 'ROLL', { dice: [1, 1] });
+  assert.deepEqual(getRollMovement(before, pendingHome), { playerId: 'p1', steps: [1, 2] });
+  const home = act(pendingHome, 'DRAW_CHANCE');
   assert.equal(home.players[0].position, 0);
-  assert.deepEqual(getRollMovement(before, home), {
-    playerId: 'p1', steps: [1, 2, 0], redirects: [{ index: 2, from: 2, to: 0, reason: 'chance' }],
+  assert.deepEqual(getChanceMovement(pendingHome, home), {
+    playerId: 'p1', steps: [0], redirects: [{ index: 0, from: 2, to: 0, reason: 'chance' }],
   });
   before.round = 1;
-  const jailed = act(before, 'ROLL', { dice: [1, 1] });
-  assert.deepEqual(getRollMovement(before, jailed), {
-    playerId: 'p1', steps: [1, 2, 7], redirects: [{ index: 2, from: 2, to: 7, reason: 'jail' }],
+  const pendingJail = act(before, 'ROLL', { dice: [1, 1] });
+  const jailed = act(pendingJail, 'DRAW_CHANCE');
+  assert.deepEqual(getChanceMovement(pendingJail, jailed), {
+    playerId: 'p1', steps: [7], redirects: [{ index: 0, from: 2, to: 7, reason: 'jail' }],
   });
   before.round = 5;
   before.players[0].position = 31;
-  const wrappedHome = act(before, 'ROLL', { dice: [1, 2] });
-  assert.deepEqual(getRollMovement(before, wrappedHome), {
-    playerId: 'p1', steps: [0, 1, 2, 0], redirects: [{ index: 3, from: 2, to: 0, reason: 'chance' }],
+  const pendingWrapped = act(before, 'ROLL', { dice: [1, 2] });
+  assert.deepEqual(getRollMovement(before, pendingWrapped), { playerId: 'p1', steps: [0, 1, 2] });
+  const wrappedHome = act(pendingWrapped, 'DRAW_CHANCE');
+  assert.deepEqual(getChanceMovement(pendingWrapped, wrappedHome), {
+    playerId: 'p1', steps: [0], redirects: [{ index: 0, from: 2, to: 0, reason: 'chance' }],
   });
   assert.equal(wrappedHome.players[0].cash, before.players[0].cash + 4000);
+});
+
+test('chance must be drawn explicitly and pending or resolved reloads cannot pay twice', () => {
+  const initial = fresh();
+  initial.round = 4; // Dividend card: +1200.
+  const pending = act(initial, 'ROLL', { dice: [1, 1] });
+  const pendingJSON = JSON.stringify(pending);
+  const reloadedPending = JSON.parse(pendingJSON);
+  assert.equal(validateState(reloadedPending), true);
+  assert.equal(getChanceCard(reloadedPending), null);
+  assert.throws(() => act(reloadedPending, 'END_TURN'));
+  assert.throws(() => act(reloadedPending, 'ROLL', { dice: [1, 2] }));
+  assert.throws(() => act(reloadedPending, 'DRAW_CHANCE', { playerId: 'p2' }));
+  const drawn = act(reloadedPending, 'DRAW_CHANCE');
+  assert.equal(JSON.stringify(pending), pendingJSON);
+  assert.equal(drawn.players[0].cash, 16200);
+  assert.deepEqual(drawn.chanceCard, { id: 'dividend', playerId: 'p1' });
+  assert.equal(getChanceCard(drawn).title, '创业分红');
+  const reloadedDrawn = JSON.parse(JSON.stringify(drawn));
+  assert.equal(validateState(reloadedDrawn), true);
+  assert.equal(getChanceCard(reloadedDrawn).amount, 1200);
+  assert.throws(() => act(reloadedDrawn, 'DRAW_CHANCE'));
+  assert.equal(reloadedDrawn.players[0].cash, 16200);
+  assert.deepEqual(getChanceMovement(reloadedPending, drawn), { playerId: 'p1', steps: [] });
+  const changedAnimal = act(drawn, 'SET_ANIMAL', { playerId: 'p1', animalId: 'fox' });
+  assert.deepEqual(changedAnimal.chanceCard, drawn.chanceCard);
+  const nextTurn = act(changedAnimal, 'END_TURN');
+  assert.deepEqual(nextTurn.chanceCard, drawn.chanceCard);
+  const nextRoll = act(nextTurn, 'ROLL', { dice: [1, 3] });
+  assert.equal(nextRoll.chanceCard, null);
+});
+
+test('a card expense creates debt only on drawing and still requires mortgage or bankruptcy', () => {
+  const initial = fresh();
+  initial.round = 7; // Travel expense: -1000.
+  initial.players[0].cash = 100;
+  own(initial, 11); // Mortgage value 1000.
+  const pending = act(initial, 'ROLL', { dice: [1, 1] });
+  assert.equal(pending.players[0].cash, 100);
+  const drawn = act(pending, 'DRAW_CHANCE');
+  assert.equal(drawn.players[0].cash, -900);
+  assert.equal(drawn.chanceCard.id, 'travel');
+  assert.throws(() => act(drawn, 'END_TURN'));
+  assert.throws(() => act(drawn, 'DRAW_CHANCE'));
+  const funded = act(drawn, 'MORTGAGE', { tileId: 11 });
+  assert.equal(funded.players[0].cash, 100);
+  assert.equal(funded.chanceCard.id, 'travel');
+  assert.equal(act(funded, 'END_TURN').currentPlayer, 1);
+});
+
+test('schema version 1 saves without chance cards or animals remain playable', () => {
+  const legacy = fresh();
+  delete legacy.chanceCard;
+  legacy.players.forEach(player => { delete player.animal; });
+  assert.equal(validateState(legacy), true);
+  const pending = act(legacy, 'ROLL', { dice: [1, 1] });
+  assert.equal(pending.schemaVersion, 1);
+  assert.equal(pending.phase, 'chance');
+  const drawn = act(pending, 'DRAW_CHANCE');
+  assert.equal(validateState(drawn), true);
+  assert.equal(drawn.players[0].jailed, 2);
+
+  // An old version already settled its card while landing. Reading that saved
+  // end phase must never reinterpret the tile as a new card to pay again.
+  legacy.round = 4;
+  legacy.players[0].position = 2;
+  legacy.players[0].cash = 16200;
+  legacy.phase = 'end';
+  legacy.dice = [1, 1];
+  assert.equal(validateState(legacy), true);
+  assert.equal(getChanceCard(legacy), null);
+  assert.throws(() => act(legacy, 'DRAW_CHANCE'));
+  assert.equal(act(legacy, 'END_TURN').players[0].cash, 16200);
+});
+
+test('invalid chance phases and unknown card records cannot enter saved state', () => {
+  const invalid = [
+    state => { state.phase = 'chance'; },
+    state => { state.chanceCard = { id: 'fake', playerId: 'p1' }; },
+    state => { state.chanceCard = { id: 'dividend', playerId: 'missing' }; },
+    state => { state.chanceCard = []; },
+  ];
+  for (const mutate of invalid) {
+    const state = fresh();
+    mutate(state);
+    assert.equal(validateState(state), false);
+  }
+  const pending = act(fresh(), 'ROLL', { dice: [1, 1] });
+  const alreadyDrawn = structuredClone(pending);
+  alreadyDrawn.chanceCard = { id: 'dividend', playerId: 'p1' };
+  assert.equal(validateState(alreadyDrawn), false);
+  pending.dice = null;
+  assert.equal(validateState(pending), false);
 });
