@@ -391,3 +391,78 @@
   .chance-emblem{width:62px;height:62px;margin:17px 0 14px}.chance-emblem>span{font-size:39px}.chance-card-top{font-size:7px}
 }
 @media(prefers-reduced-motion:reduce){.chance-modal[open] .chance-card.is-revealed{animation:none}.camera-reset:hover{transform:none}}
+
+/* Six sealed possibilities. The outcome stays hidden until a card is chosen. */
+.chance-pick-modal{
+  width:min(570px,calc(100% - 24px));max-height:calc(100dvh - 24px);
+  padding:30px 34px 25px;border:1px solid #b7a577;border-radius:22px;
+  background:radial-gradient(ellipse at 50% 25%,#fffdf2,#f2eedf 85%);
+  box-shadow:0 24px 90px #15213055,5px 6px 0 #c8b78b55;text-align:center;overflow-x:hidden;
+}
+.chance-pick-modal::backdrop{background:#19273eb3;backdrop-filter:blur(8px)}
+.chance-pick-modal .modal-eyebrow{font-size:8px;letter-spacing:2px;color:#9b8149;margin-bottom:12px}
+.chance-pick-modal #chance-pick-title{font-size:25px;line-height:1.45;letter-spacing:.6px;margin:0 0 9px}
+.chance-pick-intro{font-size:12px;line-height:1.7;color:#858371}
+.chance-options{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:17px 16px;
+  margin:25px 0 21px;padding:4px;counter-reset:chance-number;perspective:1000px;
+}
+.chance-option{
+  --card-tilt:-2deg;--deal-delay:30ms;--deal-offset:-18px;
+  counter-increment:chance-number;position:relative;isolation:isolate;min-width:0;min-height:171px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  padding:26px 10px 20px;border:1px solid #c9ac62;border-radius:12px;
+  background:radial-gradient(ellipse at 50% 37%,#52677a77,transparent 65%),repeating-linear-gradient(45deg,#dfc98c07 0,#dfc98c07 1px,transparent 1px,transparent 9px),linear-gradient(135deg,#2c3c55,#19263c);
+  color:#f0d592;font-size:12px;font-weight:600;letter-spacing:1px;
+  box-shadow:inset 0 0 0 4px #24354c,inset 0 0 0 5px #c7a76377,2px 3px 0 #bdab7b,0 6px 12px #26334820;
+  transform:rotate(var(--card-tilt));transform-origin:50% 85%;
+  transition:transform .18s ease,box-shadow .18s ease,opacity .18s ease,filter .18s ease;
+}
+.chance-option::before{content:counter(chance-number,decimal-leading-zero);position:absolute;top:12px;left:13px;color:#d1b878;font:11px Georgia,serif;letter-spacing:1px}
+.chance-option::after{content:"✧";position:absolute;right:12px;bottom:10px;color:#ccb477;font-size:16px;line-height:1}
+.chance-option:nth-child(2){--card-tilt:1.3deg;--deal-delay:160ms;--deal-offset:9px}
+.chance-option:nth-child(3){--card-tilt:-1deg;--deal-delay:85ms;--deal-offset:20px}
+.chance-option:nth-child(4){--card-tilt:1.5deg;--deal-delay:205ms;--deal-offset:-14px}
+.chance-option:nth-child(5){--card-tilt:-1.5deg;--deal-delay:110ms;--deal-offset:5px}
+.chance-option:nth-child(6){--card-tilt:2deg;--deal-delay:245ms;--deal-offset:17px}
+.chance-option-mark{
+  display:grid;place-items:center;width:66px;height:66px;border:1px solid #b7a26a80;border-radius:50%;
+  background:radial-gradient(#dbbd7040,transparent 75%);box-shadow:inset 0 0 0 5px #25374f,inset 0 0 0 6px #c6ac692e;
+  font-size:42px;font-weight:400;line-height:1;color:#e8cd8b;text-shadow:0 2px #77613b;
+}
+.chance-option-label{font-size:10px;letter-spacing:3px;font-weight:500;color:#ead496}
+.chance-pick-modal[open] .chance-option{animation:chance-deal-in .46s cubic-bezier(.18,.75,.25,1) backwards;animation-delay:var(--deal-delay)}
+.chance-option:hover:not(:disabled){transform:translateY(-5px) rotate(0);box-shadow:inset 0 0 0 4px #2c3c53,inset 0 0 0 5px #edcd87cc,2px 4px 0 #bdab7b,0 11px 18px #26334829}
+.chance-option:focus-visible{outline:3px solid #ba913e;outline-offset:5px;transform:translateY(-3px) rotate(0)}
+.chance-option.is-picked,.chance-option.is-picked:disabled{opacity:1;transform:translateY(-6px) rotate(0) scale(1.04);border-color:#f1d685;box-shadow:inset 0 0 0 4px #344962,inset 0 0 0 5px #efd497,0 0 0 3px #e9d29566,0 10px 24px #26334838}
+.chance-options[aria-busy="true"] .chance-option:not(.is-picked){opacity:.38;filter:saturate(.55);transform:scale(.96) rotate(var(--card-tilt))}
+.chance-pick-hint{min-height:21px;font-size:11px;color:#817c68;line-height:1.8;margin:0 auto;max-width:360px}
+.chance-pick-modal .modal-actions{justify-content:center;margin-top:17px}
+.chance-pick-modal .modal-actions .button{min-height:38px;padding:9px 24px;font-size:11px;background:transparent;border-color:#b5b4a2;color:#7b7b68}
+.chance-pick-modal .modal-actions .button:hover:not(:disabled){background:#eae5d5}
+@keyframes chance-deal-in{
+  from{opacity:0;transform:translate(var(--deal-offset),35px) rotateY(-32deg) rotate(-8deg) scale(.82)}
+  to{opacity:1;transform:translate(0,0) rotateY(0) rotate(var(--card-tilt)) scale(1)}
+}
+@media(max-width:600px){
+  .chance-pick-modal{padding:25px 21px 20px;border-radius:18px}
+  .chance-pick-modal .modal-eyebrow{font-size:7px;letter-spacing:1.4px;margin-bottom:10px}
+  .chance-pick-modal #chance-pick-title{font-size:22px;letter-spacing:.3px;margin-bottom:8px}
+  .chance-pick-intro{font-size:11px}.chance-options{gap:13px 11px;margin:20px 0 18px;padding:3px}
+  .chance-option{min-height:141px;padding:24px 7px 18px;gap:10px;border-radius:10px}
+  .chance-option::before{top:10px;left:10px;font-size:10px}.chance-option::after{right:10px;bottom:9px;font-size:14px}
+  .chance-option-mark{width:53px;height:53px;font-size:35px}.chance-option-label{font-size:9px;letter-spacing:2px}
+  .chance-pick-hint{font-size:10px}.chance-pick-modal .modal-actions{margin-top:14px}
+}
+@media(max-width:370px){
+  .chance-pick-modal{padding:22px 15px 18px}.chance-pick-modal #chance-pick-title{font-size:20px}
+  .chance-pick-modal .modal-eyebrow{font-size:6px;letter-spacing:1.2px}.chance-pick-intro{font-size:10px}
+  .chance-options{gap:12px 9px;margin:19px 0 17px;padding:2px}.chance-option{min-height:122px;padding:22px 5px 15px;gap:8px}
+  .chance-option-mark{width:45px;height:45px;font-size:30px}.chance-option-label{font-size:8px;letter-spacing:1.6px}
+  .chance-option::before{font-size:9px;left:9px;top:9px}.chance-option::after{font-size:12px;right:8px;bottom:8px}
+  .chance-pick-hint{font-size:9px}.chance-pick-modal .modal-actions .button{font-size:10px;min-height:36px}
+}
+@media(prefers-reduced-motion:reduce){
+  .chance-pick-modal[open] .chance-option{animation:none;transition:none}
+  .chance-option,.chance-option:hover:not(:disabled),.chance-option.is-picked,.chance-option.is-picked:disabled,.chance-options[aria-busy="true"] .chance-option:not(.is-picked){transform:none}
+}

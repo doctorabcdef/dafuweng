@@ -482,3 +482,132 @@ test('invalid chance phases and unknown card records cannot enter saved state', 
   pending.dice = null;
   assert.equal(validateState(pending), false);
 });
+
+test('a six-card offer is committed with the roll and survives reloads without reshuffling', () => {
+  const initial = fresh();
+  const cards = ['treasure', 'dividend', 'travel', 'return-start', 'go-to-jail', 'repairs'];
+  const expectedCards = [...cards];
+  const pending = act(initial, 'ROLL', { dice: [1, 1], chanceCards: cards });
+  cards[0] = 'lottery';
+  assert.equal(pending.phase, 'chance');
+  assert.equal(pending.players[0].cash, initial.players[0].cash);
+  assert.equal(pending.players[0].position, 2);
+  assert.deepEqual(pending.chanceOffer, expectedCards);
+  assert.equal(new Set(pending.chanceOffer).size, 6);
+  assert.equal(pending.chanceCard, null);
+  assert.equal(initial.chanceOffer, null);
+
+  const restored = JSON.parse(JSON.stringify(pending));
+  assert.equal(validateState(restored), true);
+  assert.deepEqual(restored.chanceOffer, expectedCards);
+  const changedAnimal = act(restored, 'SET_ANIMAL', { playerId: 'p2', animalId: 'panda' });
+  assert.deepEqual(changedAnimal.chanceOffer, expectedCards);
+  const beforeRetry = JSON.stringify(restored);
+  assert.throws(() => act(restored, 'PREPARE_CHANCE', { chanceCards: expectedCards }));
+  assert.throws(() => act(restored, 'PREPARE_CHANCE', { chanceCards: [...expectedCards].reverse() }));
+  assert.equal(JSON.stringify(restored), beforeRetry);
+
+  const drawn = act(restored, 'DRAW_CHANCE', { cardIndex: 1 });
+  assert.deepEqual(drawn.chanceOffer, expectedCards);
+  assert.equal(drawn.chanceCard.id, 'dividend');
+  const reloadedDrawn = JSON.parse(JSON.stringify(drawn));
+  assert.throws(() => act(reloadedDrawn, 'DRAW_CHANCE', { cardIndex: 0 }));
+  assert.equal(reloadedDrawn.players[0].cash, 16200);
+  const next = act(reloadedDrawn, 'END_TURN');
+  assert.deepEqual(next.chanceOffer, expectedCards);
+  const rolledAgain = act(next, 'ROLL', { dice: [1, 3], chanceCards: expectedCards });
+  assert.equal(rolledAgain.chanceOffer, null);
+  assert.equal(rolledAgain.chanceCard, null);
+});
+
+test('each of the six indexes selects its own effect and movement replays the selected card', () => {
+  const cards = ['treasure', 'dividend', 'travel', 'return-start', 'go-to-jail', 'repairs'];
+  const pending = act(fresh(), 'ROLL', { dice: [1, 1], chanceCards: cards });
+  const pendingJSON = JSON.stringify(pending);
+  for (let cardIndex = 0; cardIndex < cards.length; cardIndex++) {
+    const drawn = act(pending, 'DRAW_CHANCE', { cardIndex });
+    const card = CHANCE_CARDS.find(item => item.id === cards[cardIndex]);
+    assert.equal(drawn.phase, 'end');
+    assert.deepEqual(drawn.chanceCard, { id: card.id, playerId: 'p1' });
+    assert.equal(drawn.players[0].cash, 15000 + (card.amount ?? 0));
+    assert.equal(drawn.players[0].position, card.destination ?? 2);
+    assert.equal(drawn.players[0].jailed, card.kind === 'jail' ? 2 : 0);
+    assert.equal(validateState(drawn), true);
+    const movement = card.destination === undefined ? { playerId: 'p1', steps: [] } : {
+      playerId: 'p1', steps: [card.destination],
+      redirects: [{ index: 0, from: 2, to: card.destination, reason: card.kind === 'jail' ? 'jail' : 'chance' }],
+    };
+    assert.deepEqual(getChanceMovement(pending, drawn), movement);
+    assert.equal(JSON.stringify(pending), pendingJSON);
+  }
+  const legacyAction = act(pending, 'DRAW_CHANCE');
+  assert.equal(legacyAction.chanceCard.id, cards[0]);
+  assert.equal(legacyAction.players[0].cash, 15500);
+});
+
+test('invalid offers and indexes cannot be saved or replace a valid pending choice', () => {
+  const cards = ['treasure', 'dividend', 'travel', 'return-start', 'go-to-jail', 'repairs'];
+  const invalidOffers = [
+    null, [], cards.slice(0, 5), [...cards, 'lottery'],
+    ['treasure', 'treasure', ...cards.slice(2)],
+    ['unknown-card', ...cards.slice(1)],
+    [, ...cards.slice(1)],
+  ];
+  const initial = fresh();
+  const pending = act(initial, 'ROLL', { dice: [1, 1], chanceCards: cards });
+  const legacy = structuredClone(pending);
+  delete legacy.chanceOffer;
+  assert.equal(validateState(legacy), true);
+  for (const chanceCards of invalidOffers) {
+    assert.throws(() => act(initial, 'ROLL', { dice: [1, 1], chanceCards }));
+    assert.throws(() => act(legacy, 'PREPARE_CHANCE', { chanceCards }));
+    if (chanceCards !== null) {
+      const invalid = structuredClone(pending);
+      invalid.chanceOffer = chanceCards;
+      assert.equal(validateState(invalid), false);
+    }
+  }
+  for (const cardIndex of [-1, 6, 1.5, NaN, Infinity, '2', null, {}]) {
+    assert.throws(() => act(pending, 'DRAW_CHANCE', { cardIndex }));
+  }
+  assert.equal(pending.phase, 'chance');
+  assert.equal(pending.chanceCard, null);
+  assert.equal(pending.players[0].cash, 15000);
+  const outsideOffer = act(pending, 'DRAW_CHANCE', { cardIndex: 0 });
+  outsideOffer.chanceCard.id = 'lottery';
+  assert.equal(validateState(outsideOffer), false);
+});
+
+test('old pending games may receive an offer once without changing their economic progress', () => {
+  const legacy = act(fresh(), 'ROLL', { dice: [1, 1] });
+  delete legacy.chanceOffer;
+  const original = structuredClone(legacy);
+  const cards = ['dividend', 'repairs', 'lottery', 'travel', 'return-start', 'go-to-jail'];
+  const prepared = act(legacy, 'PREPARE_CHANCE', { chanceCards: cards });
+  const expected = structuredClone(original);
+  expected.chanceOffer = [...cards];
+  expected.updatedAt = prepared.updatedAt;
+  assert.deepEqual(prepared, expected);
+  assert.deepEqual(legacy, original);
+  assert.equal(validateState(JSON.parse(JSON.stringify(prepared))), true);
+  assert.throws(() => act(prepared, 'PREPARE_CHANCE', { chanceCards: [...cards].reverse() }));
+  const drawn = act(prepared, 'DRAW_CHANCE', { cardIndex: 4 });
+  assert.equal(drawn.chanceCard.id, 'return-start');
+  assert.equal(drawn.players[0].position, 0);
+  assert.deepEqual(getChanceMovement(prepared, drawn), {
+    playerId: 'p1', steps: [0], redirects: [{ index: 0, from: 2, to: 0, reason: 'chance' }],
+  });
+
+  // Older callers can still draw without PREPARE_CHANCE or an explicit index.
+  const oldDraw = act(legacy, 'DRAW_CHANCE');
+  assert.equal(oldDraw.chanceCard.id, 'go-to-jail');
+  assert.equal(oldDraw.chanceOffer.length, 6);
+  assert.deepEqual(getChanceMovement(legacy, oldDraw), {
+    playerId: 'p1', steps: [7], redirects: [{ index: 0, from: 2, to: 7, reason: 'jail' }],
+  });
+  const oldResolved = structuredClone(oldDraw);
+  delete oldResolved.chanceOffer;
+  assert.equal(validateState(oldResolved), true);
+  assert.throws(() => act(oldResolved, 'PREPARE_CHANCE', { chanceCards: cards }));
+  assert.throws(() => act(oldResolved, 'DRAW_CHANCE', { cardIndex: 0 }));
+});

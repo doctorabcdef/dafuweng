@@ -1,4 +1,4 @@
-import { BOARD, ANIMALS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getRollMovement, getChanceCard, getChanceMovement, getRent, getNetWorth, canBuild, validateState } from './game.js';
+import { BOARD, ANIMALS, CHANCE_CARDS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getRollMovement, getChanceCard, getChanceMovement, getRent, getNetWorth, canBuild, validateState } from './game.js';
 import { STORAGE_KEY, readStored, writeStored, parseRoom, newRoomToken, checkCloudConfig, CloudStore } from './persistence.js';
 import { createSoundEffects, animationPause } from './effects.js';
 
@@ -23,6 +23,8 @@ let storageWarning = false;
 let pendingHash = null;
 let presentation = null;
 let freshHouse = null;
+let selectedChanceIndex = null;
+let chancePickerKey = null;
 let animalTarget = null;
 let setupAnimals = ANIMALS.slice(0, 4).map(animal => animal.id);
 let soundEnabled = readStored(storage, STORAGE_KEY + ':sound', true) !== false;
@@ -35,7 +37,7 @@ function disableWorld() {
 }
 // Load the renderer independently: a device without WebGL can still play and save.
 import('./world.js').then(({ createWorld }) => {
-  world = createWorld({ canvas: $('world-canvas'), onSelect: tileId => { selectedTile = tileId; renderBoard(); renderProperty(); }, onChance: () => perform({ type: 'DRAW_CHANCE' }), onUnavailable: disableWorld });
+  world = createWorld({ canvas: $('world-canvas'), onSelect: tileId => { selectedTile = tileId; renderBoard(); renderProperty(); }, onChance: openChancePicker, onUnavailable: disableWorld });
   if (!world) disableWorld();
   else { $('world-fallback').hidden = true; $('reset-camera').onclick = () => world?.resetCamera(); renderBoard(); }
 }).catch(disableWorld);
@@ -51,7 +53,7 @@ function toast(message) {
   toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 6500);
 }
 async function finishOperation() {
-  presentation = null; freshHouse = null;
+  presentation = null; freshHouse = null; selectedChanceIndex = null;
   restoreNewerLocalState();
   busy = false; render();
   if (pendingHash === null) return false;
@@ -64,10 +66,53 @@ function showChanceCard() {
   if (!card || pendingHash !== null) return;
   $('chance-title').textContent = card.title;
   $('chance-description').textContent = card.description;
+  const slot = game.chanceOffer?.indexOf(card.id) ?? -1;
+  $('chance-card').querySelector('.chance-card-label').textContent = slot < 0 ? '环球机遇卡' : `第 ${slot + 1} 张 · 环球机遇卡`;
   $('chance-card').dataset.kind = card.kind;
   $('chance-card').classList.remove('is-revealed');
-  $('chance-dialog').showModal();
+  $('chance-pick-dialog').close(); $('chance-dialog').showModal();
   requestAnimationFrame(() => $('chance-card').classList.add('is-revealed'));
+}
+function randomChanceCards() {
+  const cards = CHANCE_CARDS.map(card => card.id);
+  const sample = new Uint32Array(1);
+  for (let index = cards.length - 1; index > 0; index--) {
+    const range = index + 1, limit = Math.floor(0x100000000 / range) * range;
+    do { crypto.getRandomValues(sample); } while (sample[0] >= limit);
+    const swap = sample[0] % range;
+    [cards[index], cards[swap]] = [cards[swap], cards[index]];
+  }
+  return cards.slice(0, 6);
+}
+async function openChancePicker() {
+  if (!game || busy || game.phase !== 'chance' || (session?.mode === 'cloud' && !connected)) return;
+  const openingGeneration = generation, gameId = game.id;
+  if (!game.chanceOffer) await perform({ type: 'PREPARE_CHANCE', chanceCards: randomChanceCards() });
+  if (generation !== openingGeneration || game?.id !== gameId || game.phase !== 'chance' || !game.chanceOffer || busy) return;
+  selectedChanceIndex = null;
+  renderChancePicker(); $('chance-pick-dialog').showModal();
+}
+function renderChancePicker() {
+  const dialog = $('chance-pick-dialog');
+  if (!game || game.phase !== 'chance') { if (!busy) dialog.close(); return; }
+  if (!game.chanceOffer) return;
+  const key = `${game.id}:${game.round}:${game.currentPlayer}:${game.chanceOffer.join(',')}`;
+  if (chancePickerKey !== key) {
+    chancePickerKey = key;
+    $('chance-options').innerHTML = game.chanceOffer.map((_, index) => `<button type="button" class="chance-option" data-card-index="${index}" aria-label="抽取第 ${index + 1} 张机遇卡"><span class="chance-option-mark" aria-hidden="true">✦</span><span class="chance-option-label">机遇卡</span></button>`).join('');
+    $('chance-options').querySelectorAll('button').forEach(node => {
+      node.onclick = async () => {
+        if (busy || game.phase !== 'chance') return;
+        selectedChanceIndex = Number(node.dataset.cardIndex);
+        await perform({ type: 'DRAW_CHANCE', cardIndex: selectedChanceIndex });
+      };
+    });
+  }
+  const unavailable = busy || (session?.mode === 'cloud' && !connected);
+  $('chance-options').setAttribute('aria-busy', String(busy));
+  $('chance-options').querySelectorAll('button').forEach((node, index) => { node.disabled = unavailable; node.classList.toggle('is-picked', index === selectedChanceIndex); });
+  $('chance-pick-close').disabled = busy;
+  $('chance-pick-hint').textContent = busy ? '正在揭晓你选中的机遇…' : unavailable ? '连接恢复后，即可继续选牌。' : '六张牌，六种可能。点击一张，揭晓你的机遇。';
 }
 function restoreNewerLocalState() {
   if (session?.mode !== 'local' || !game) return false;
@@ -147,6 +192,13 @@ async function animateCommitted(before, after, type, rollLead = Promise.resolve(
       }
       sound.arrive();
     } else if (type === 'DRAW_CHANCE') {
+      if ($('chance-pick-dialog').open) {
+        selectedChanceIndex = after.chanceOffer?.indexOf(after.chanceCard?.id) ?? null;
+        $('chance-options').setAttribute('aria-busy', 'true'); $('chance-pick-close').disabled = true;
+        $('chance-pick-hint').textContent = '这张牌的机遇正在揭晓…';
+        $('chance-options').querySelectorAll('button').forEach((node, index) => { node.disabled = true; node.classList.toggle('is-picked', index === selectedChanceIndex); });
+        await animationPause(320); $('chance-pick-dialog').close();
+      }
       const movement = getChanceMovement(before, after);
       if (movement.steps.length && !document.hidden && pendingHash === null) {
         const actor = getCurrentPlayer(before);
@@ -215,7 +267,7 @@ function renderProperty() {
   panel.append(controls);
 }
 function render() {
-  syncLabel(); renderBoard();
+  syncLabel(); renderBoard(); renderChancePicker();
   $('share-button').disabled = !game || busy;
   $('new-game-button').disabled = busy;
   $('settings-button').disabled = busy;
@@ -243,7 +295,7 @@ function render() {
       $('actions').append(button('购买 ' + money(tile.price), { type: 'BUY' }, 'primary', current.cash < tile.price));
       $('actions').append(button('暂不购买', { type: 'SKIP_BUY' }, 'secondary'));
     } else if (game.phase === 'chance') {
-      $('actions').append(button('抽取机遇卡', { type: 'DRAW_CHANCE' }, 'primary chance-draw'));
+      $('actions').append(button('抽取机遇卡', { type: 'OPEN_CHANCE' }, 'primary chance-draw'));
     } else $('actions').append(button('结束回合', { type: 'END_TURN' }));
   }
   if (getChanceCard(game)) {
@@ -307,11 +359,12 @@ function secureDie() {
   return sample[0] % 6 + 1;
 }
 async function perform(action) {
+  if (action.type === 'OPEN_CHANCE') return openChancePicker();
   if (!game || busy || (session.mode === 'cloud' && !connected)) return;
-  if (restoreNewerLocalState()) { render(); toast('另一个窗口更新了对局，已载入最新进度，请重新操作。'); return; }
+  if (restoreNewerLocalState()) { selectedChanceIndex = null; render(); toast('另一个窗口更新了对局，已载入最新进度，请重新操作。'); return; }
   if (action.type === 'BANKRUPT' && !confirm('确认宣布破产并退出本局？')) return;
   const audioReady = sound.unlock();
-  if (action.type === 'ROLL') action = { ...action, dice: [secureDie(), secureDie()] };
+  if (action.type === 'ROLL') action = { ...action, dice: [secureDie(), secureDie()], chanceCards: randomChanceCards() };
   busy = true; render();
   try {
     const before = game;
@@ -362,6 +415,8 @@ $('sound-button').onclick = () => {
 };
 $('animal-close').onclick = () => $('animal-dialog').close();
 $('chance-close').onclick = () => $('chance-dialog').close();
+$('chance-pick-close').onclick = () => { if (!busy) $('chance-pick-dialog').close(); };
+$('chance-pick-dialog').addEventListener('cancel', event => { if (busy) event.preventDefault(); });
 renderSoundButton();
 function openSetup() {
   if (busy) return;
@@ -448,6 +503,7 @@ $('share-copy').onclick = async () => {
 };
 async function restore() {
   $('chance-dialog').close();
+  $('chance-pick-dialog').close(); selectedChanceIndex = null; chancePickerKey = null;
   generation++; connected = false; activateOnLoad = false;
   let stored = readStored(storage, STORAGE_KEY);
   if (stored?.state) stored = readStored(storage, cacheKey(stored), stored);

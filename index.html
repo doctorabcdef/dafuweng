@@ -111,6 +111,14 @@
       <div class="field"><label for="share-link">当前对局链接</label><input id="share-link" type="url" readonly /></div>
       <div class="modal-actions"><button id="share-close" class="button secondary" type="button">关闭</button><button id="share-copy" class="button primary" type="button">复制链接 <span aria-hidden="true">↗</span></button></div>
     </dialog>
+    <dialog id="chance-pick-dialog" class="modal chance-pick-modal" aria-labelledby="chance-pick-title" aria-describedby="chance-pick-hint">
+      <div class="modal-eyebrow">SIX CARDS. ONE LITTLE SURPRISE.</div>
+      <h2 id="chance-pick-title">从六张牌中选择一张</h2>
+      <p class="chance-pick-intro">凭一点直觉，把下一份机遇翻开。</p>
+      <div id="chance-options" class="chance-options" role="group" aria-label="六张待抽取的机遇卡" aria-busy="false"></div>
+      <p id="chance-pick-hint" class="chance-pick-hint" role="status" aria-live="polite">六张牌已洗好，点选一张揭晓你的机遇。</p>
+      <div class="modal-actions"><button id="chance-pick-close" class="button secondary" type="button">稍后再选</button></div>
+    </dialog>
     <dialog id="chance-dialog" class="modal chance-modal" aria-labelledby="chance-title" aria-describedby="chance-description">
       <div class="modal-eyebrow">A LITTLE TWIST OF FATE</div>
       <p class="chance-intro">旅途中，总有意想不到的相遇。</p>
