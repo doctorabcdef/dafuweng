@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.local/
+test-results/
+.env
+.env.*
+!.env.example
