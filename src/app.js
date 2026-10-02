@@ -1,5 +1,6 @@
-import { BOARD, createGame, applyAction, getCurrentPlayer, getRent, getNetWorth, canBuild, validateState } from './game.js';
+import { BOARD, ANIMALS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getRollMovement, getRent, getNetWorth, canBuild, validateState } from './game.js';
 import { STORAGE_KEY, readStored, writeStored, parseRoom, newRoomToken, checkCloudConfig, CloudStore } from './persistence.js';
+import { createSoundEffects, animationPause } from './effects.js';
 
 const $ = id => document.getElementById(id);
 const money = value => '¥' + Math.round(value).toLocaleString('zh-CN');
@@ -20,6 +21,14 @@ let activateOnLoad = false;
 let toastTimer;
 let storageWarning = false;
 let pendingHash = null;
+let presentation = null;
+let freshHouse = null;
+let animalTarget = null;
+let setupAnimals = ANIMALS.slice(0, 4).map(animal => animal.id);
+let soundEnabled = readStored(storage, STORAGE_KEY + ':sound', true) !== false;
+const sound = createSoundEffects(soundEnabled);
+const diceFaces = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+const visualPosition = player => presentation?.playerId === player.id ? presentation.position : player.position;
 const cacheKey = value => STORAGE_KEY + ':game:' + (value.mode === 'cloud' ? 'cloud:' + (value.endpoint || '') + ':' + value.token : 'local:' + value.state.id);
 const sameSession = (a, b) => a && b && a.mode === b.mode && (a.mode === 'cloud' ? a.token === b.token && a.endpoint === b.endpoint : a.state?.id === b.state?.id);
 
@@ -30,11 +39,19 @@ function toast(message) {
   toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 6500);
 }
 async function finishOperation() {
+  presentation = null; freshHouse = null;
+  restoreNewerLocalState();
   busy = false; render();
   if (pendingHash === null) return false;
   const hash = pendingHash; pendingHash = null;
   history.replaceState(null, '', location.pathname + location.search + hash);
   await restore(); return true;
+}
+function restoreNewerLocalState() {
+  if (session?.mode !== 'local' || !game) return false;
+  const cached = readStored(storage, cacheKey(session));
+  if (!sameSession(cached, session) || !validateState(cached.state) || Date.parse(cached.state.updatedAt) <= Date.parse(game.updatedAt)) return false;
+  session = cached; game = cached.state; return true;
 }
 function persist(activate = false) {
   if (!session || !game) return;
@@ -50,13 +67,62 @@ function persist(activate = false) {
 function syncLabel() {
   const label = $('sync-status');
   label.className = 'sync-status ' + (session?.mode === 'cloud' ? (connected ? 'online' : 'offline') : 'local');
-  label.textContent = busy ? '正在保存…' : session?.mode === 'cloud' ? (connected ? '云端已保存 · 自动同步' : '云端未连接 · 操作已暂停') : game ? '本机自动保存' : '准备开始';
+  label.textContent = busy ? (presentation?.stage === 'walking' ? '棋子移动中 · 已保存' : presentation?.stage === 'rolling' ? '掷骰中 · 正在保存…' : '正在保存…') : session?.mode === 'cloud' ? (connected ? '云端已保存 · 自动同步' : '云端未连接 · 操作已暂停') : game ? '本机自动保存' : '准备开始';
 }
 function positions(index) {
   if (index <= 8) return [9, 9 - index];
   if (index <= 16) return [17 - index, 1];
   if (index <= 24) return [1, index - 15];
   return [index - 23, 9];
+}
+function renderDice(values, rolling = false) {
+  const dice = $('dice-display');
+  dice.classList.toggle('is-rolling', rolling);
+  dice.setAttribute('aria-live', rolling ? 'off' : 'polite');
+  dice.setAttribute('aria-label', rolling ? '正在摇骰子' : '骰子：' + values.join(' 和 '));
+  dice.innerHTML = values.map(value => `<span class="die-face" data-value="${value}" aria-hidden="true">${diceFaces[value - 1]}</span>`).join('');
+}
+function startRollVisual(before, audioReady) {
+  const actor = getCurrentPlayer(before);
+  const visual = { playerId: actor.id, position: actor.position, stage: 'rolling', dice: [5, 3], message: `${getPlayerAnimal(actor, before.currentPlayer).emoji} ${actor.name}正在摇骰子…` };
+  presentation = visual; render();
+  Promise.resolve(audioReady).then(() => { if (presentation === visual) sound.roll(); });
+  return (async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      if (presentation !== visual || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches || pendingHash !== null) break;
+      visual.dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      renderDice(visual.dice, true);
+      await animationPause(75);
+    }
+  })();
+}
+async function animateCommitted(before, after, type, rollLead = Promise.resolve()) {
+  // This presentation reads a committed snapshot; no visual frame is a save.
+  // An unavailable animation/audio device must not be treated as a failed save.
+  try {
+    if (type === 'ROLL') {
+      await rollLead;
+      const movement = getRollMovement(before, after);
+      if (!presentation || document.hidden || pendingHash !== null) return;
+      presentation.stage = 'walking'; presentation.dice = after.dice;
+      presentation.message = `掷出 ${after.dice.join(' + ')} 点，出发！`;
+      render();
+      await animationPause(180);
+      for (let step = 0; step < movement.steps.length; step++) {
+        if (document.hidden || pendingHash !== null || matchMedia('(prefers-reduced-motion: reduce)').matches) break;
+        presentation.position = movement.steps[step];
+        const redirect = movement.redirects?.find(item => item.index === step);
+        const actor = before.players.find(player => player.id === movement.playerId);
+        presentation.message = redirect ? `${actor.name}${redirect.reason === 'jail' ? '前往监狱' : '乘坐奇遇快车返回起点'}。` : `${actor.name}前进 ${step + 1} / ${after.dice[0] + after.dice[1]} 步 · ${BOARD[presentation.position].name}`;
+        renderBoard(); $('event-text').textContent = presentation.message;
+        sound.step(); await animationPause(160);
+      }
+      sound.arrive();
+    } else if (type === 'BUY' || type === 'BUILD') {
+      const changed = BOARD.find(tile => after.properties[tile.id]?.ownerId && (before.properties[tile.id]?.ownerId !== after.properties[tile.id].ownerId || before.properties[tile.id]?.level !== after.properties[tile.id].level));
+      if (changed) { freshHouse = changed.id; render(); sound.purchase(); await animationPause(450); }
+    }
+  } catch { /* The confirmed state is displayed by finishOperation. */ }
 }
 function renderBoard() {
   document.querySelectorAll('#board > .tile').forEach(tile => tile.remove());
@@ -66,12 +132,14 @@ function renderBoard() {
     const owner = game?.players.find(player => player.id === property?.ownerId);
     const [row, column] = positions(index);
     node.type = 'button';
-    node.className = 'tile type-' + tile.type + (index % 8 === 0 ? ' corner' : '') + (selectedTile === tile.id ? ' tile-selected' : '');
+    node.dataset.tileId = tile.id;
+    node.className = 'tile type-' + tile.type + (index % 8 === 0 ? ' corner' : '') + (selectedTile === tile.id ? ' tile-selected' : '') + (presentation?.stage === 'walking' && presentation.position === index ? ' is-step' : '');
     node.style.gridRow = row;
     node.style.gridColumn = column;
     node.setAttribute('aria-label', tile.name + (owner ? '，属于' + owner.name : '') + (property?.mortgaged ? '，已抵押' : ''));
     node.title = node.getAttribute('aria-label');
-    node.innerHTML = `${tile.color ? `<span class="tile-color" style="background:${safe(tile.color)}"></span>` : ''}<span class="tile-name">${safe(tile.name)}</span><span class="tile-price">${tile.price ? money(tile.price) : ({ start: '+¥2,000', chance: '机遇', tax: '缴费', jail: '探望', goToJail: '入狱', parking: '休息' }[tile.type] || '')}</span><span class="tile-owner" ${owner ? `style="color:${safe(owner.color)}"` : ''}>${property?.mortgaged ? '已抵押' : owner ? (property.level ? '▰'.repeat(property.level) : '●') : ''}</span><span class="tile-tokens">${(game?.players || []).filter(player => player.position === index && !player.bankrupt).map(player => `<span class="token" style="background:${safe(player.color)}" title="${safe(player.name)}">${safe(player.name.slice(0, 1))}</span>`).join('')}</span>`;
+    const house = owner ? `<span class="tile-house${property.mortgaged ? ' mortgaged' : ''}${freshHouse === tile.id ? ' is-new' : ''}" style="--owner-color:${safe(owner.color)}" title="${safe(owner.name)}的房产${property.level ? ' · ' + property.level + '级' : ''}${property.mortgaged ? ' · 已抵押' : ''}" aria-label="${safe(owner.name)}的房产${property.mortgaged ? '，已抵押' : ''}"><span class="house-icon" aria-hidden="true">🏠</span>${property.level ? `<span class="house-level">${property.level}</span>` : ''}</span>` : '';
+    node.innerHTML = `${tile.color ? `<span class="tile-color" style="background:${safe(tile.color)}"></span>` : ''}<span class="tile-name">${safe(tile.name)}</span><span class="tile-price">${tile.price ? money(tile.price) : ({ start: '+¥2,000', chance: '机遇', tax: '缴费', jail: '探望', goToJail: '入狱', parking: '休息' }[tile.type] || '')}</span>${house}<span class="tile-tokens">${(game?.players || []).filter(player => visualPosition(player) === index && !player.bankrupt).map(player => { const animal = getPlayerAnimal(player, game.players.indexOf(player)); return `<span class="token${presentation?.stage === 'walking' && player.id === presentation.playerId ? ' is-moving' : ''}" data-player-id="${safe(player.id)}" data-position="${index}" style="--player-color:${safe(player.color)};background:${safe(player.color)}" title="${safe(player.name)} · ${animal.name}" aria-label="${safe(player.name)}的${animal.name}棋子">${animal.emoji}</span>`; }).join('')}</span>`;
     node.onclick = () => { selectedTile = tile.id; renderBoard(); renderProperty(); };
     $('board').append(node);
   });
@@ -100,20 +168,21 @@ function renderProperty() {
 }
 function render() {
   syncLabel(); renderBoard();
-  $('share-button').disabled = !game;
+  $('share-button').disabled = !game || busy;
+  $('new-game-button').disabled = busy;
+  $('settings-button').disabled = busy;
   $('actions').replaceChildren();
   if (!game) {
     $('turn-label').textContent = '一起，成为大富翁';
-    $('round-label').textContent = '等待对局'; $('dice-display').textContent = '⚄ ⚂';
+    $('round-label').textContent = '等待对局'; renderDice([5, 3]);
     $('event-text').textContent = session?.mode === 'cloud' ? '正在等待云端存档，请保持网络连接。' : '掷出骰子，开始你的置业之旅。';
     $('players').replaceChildren(); $('logs').replaceChildren(); renderProperty(); return;
   }
   const current = getCurrentPlayer(game);
   $('round-label').textContent = `第 ${game.round} 轮 · ${game.players.filter(player => !player.bankrupt).length} 位玩家`;
   $('turn-label').textContent = game.phase === 'gameover' ? (game.players.find(player => player.id === game.winnerId)?.name || '') + ' 获胜！' : current.name + ' 的回合';
-  $('dice-display').textContent = game.dice ? game.dice.map(value => ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'][value - 1]).join(' ') : '⚄ ⚂';
-  $('dice-display').setAttribute('aria-label', game.dice ? '骰子：' + game.dice.join(' 和 ') : '等待掷骰子');
-  $('event-text').textContent = game.lastEvent || '掷出骰子，开始你的置业之旅。';
+  renderDice(presentation?.dice || game.dice || [5, 3], presentation?.stage === 'rolling');
+  $('event-text').textContent = presentation?.message || game.lastEvent || '掷出骰子，开始你的置业之旅。';
   if (game.phase !== 'gameover') {
     if (current.cash < 0) {
       const hint = document.createElement('p'); hint.textContent = '资金不足：点击自己的地块抵押，或宣布破产。'; $('actions').append(hint);
@@ -127,7 +196,8 @@ function render() {
       $('actions').append(button('暂不购买', { type: 'SKIP_BUY' }, 'secondary'));
     } else $('actions').append(button('结束回合', { type: 'END_TURN' }));
   }
-  $('players').innerHTML = game.players.map((player, index) => `<article class="player-card${index === game.currentPlayer ? ' active' : ''}${player.bankrupt ? ' bankrupt' : ''}" style="--player-color:${safe(player.color)}"><div class="player-top"><span class="player-avatar" style="background:${safe(player.color)}">${safe(player.name.slice(0, 1))}</span><span class="player-name">${safe(player.name)}</span><strong class="player-cash">${money(player.cash)}</strong></div><div class="player-meta"><span>${player.bankrupt ? '已破产' : player.jailed ? '正在监狱' : '位于 ' + safe(BOARD[player.position].name)}</span><span>总资产 ${money(getNetWorth(game, player.id))}</span></div></article>`).join('');
+  $('players').innerHTML = game.players.map((player, index) => { const animal = getPlayerAnimal(player, index); return `<article class="player-card${index === game.currentPlayer ? ' active' : ''}${player.bankrupt ? ' bankrupt' : ''}" style="--player-color:${safe(player.color)}"><div class="player-top"><button type="button" class="player-avatar avatar-button" data-player-id="${safe(player.id)}" style="background:${safe(player.color)}" aria-label="为${safe(player.name)}更换动物，当前${animal.name}" title="点击更换动物" ${busy || (session?.mode === 'cloud' && !connected) ? 'disabled' : ''}>${animal.emoji}</button><span class="player-name">${safe(player.name)}</span><strong class="player-cash">${money(player.cash)}</strong></div><div class="player-meta"><span>${player.bankrupt ? '已破产' : player.jailed ? '正在监狱' : '位于 ' + safe(BOARD[visualPosition(player)].name)}</span><span>总资产 ${money(getNetWorth(game, player.id))}</span></div></article>`; }).join('');
+  $('players').querySelectorAll('.avatar-button').forEach(node => { node.onclick = () => openAnimals({ playerId: node.dataset.playerId }); });
   $('logs').innerHTML = game.logs.slice(-12).reverse().map(log => `<li>${safe(log.text)}</li>`).join('');
   renderProperty();
 }
@@ -146,17 +216,34 @@ function errorMessage(error) {
 async function refreshCloud(showError = false) {
   if (!cloud || session?.mode !== 'cloud' || busy || readingGeneration === generation || document.hidden) return;
   if (session.endpoint && session.endpoint !== cloud.config.supabaseUrl) return;
-  const currentGeneration = generation, token = session.token;
+  const currentGeneration = generation, token = session.token, requestedRevision = session.revision;
+  let animated = false;
   readingGeneration = currentGeneration;
   try {
     const snapshot = await cloud.read(token);
     if (currentGeneration !== generation || busy || session?.token !== token) return;
-    if (!game || snapshot.revision >= session.revision) acceptSnapshot(snapshot);
+    const before = game;
+    const isNext = !activateOnLoad && before && snapshot.revision === session.revision + 1 && validateState(snapshot.state);
+    const remoteRoll = isNext && before.phase === 'roll' && snapshot.state.phase !== 'roll' && snapshot.state.dice && before.currentPlayer === snapshot.state.currentPlayer;
+    if (!game || snapshot.revision >= session.revision) {
+      acceptSnapshot(snapshot);
+      if (remoteRoll) {
+        busy = true; animated = true;
+        const lead = startRollVisual(before);
+        await animateCommitted(before, game, 'ROLL', lead);
+      } else if (isNext) {
+        const purchased = BOARD.some(tile => snapshot.state.properties[tile.id]?.ownerId && (before.properties[tile.id]?.ownerId !== snapshot.state.properties[tile.id].ownerId || before.properties[tile.id]?.level !== snapshot.state.properties[tile.id].level));
+        if (purchased) { busy = true; animated = true; await animateCommitted(before, game, 'BUY'); }
+      }
+    }
     connected = true; render();
   } catch (error) {
-    if (currentGeneration !== generation) return;
+    if (currentGeneration !== generation || session?.token !== token || busy || session.revision > requestedRevision) return;
     connected = false; render(); if (showError) toast(errorMessage(error));
-  } finally { if (readingGeneration === currentGeneration) readingGeneration = null; }
+  } finally {
+    if (readingGeneration === currentGeneration) readingGeneration = null;
+    if (animated && !(await finishOperation()) && session?.mode === 'cloud') queueMicrotask(() => refreshCloud());
+  }
 }
 function secureDie() {
   const sample = new Uint8Array(1);
@@ -165,29 +252,60 @@ function secureDie() {
 }
 async function perform(action) {
   if (!game || busy || (session.mode === 'cloud' && !connected)) return;
+  if (restoreNewerLocalState()) { render(); toast('另一个窗口更新了对局，已载入最新进度，请重新操作。'); return; }
   if (action.type === 'BANKRUPT' && !confirm('确认宣布破产并退出本局？')) return;
+  const audioReady = sound.unlock();
   if (action.type === 'ROLL') action = { ...action, dice: [secureDie(), secureDie()] };
   busy = true; render();
   try {
+    const before = game;
     const next = applyAction(game, { ...action, now: Date.now() });
+    const lead = action.type === 'ROLL' ? startRollVisual(before, audioReady) : Promise.resolve();
     if (session.mode === 'cloud') {
       const snapshot = await cloud.save(session.token, session.revision, next);
       acceptSnapshot(snapshot);
       persist(true);
     } else { game = next; persist(true); }
+    await animateCommitted(before, game, action.type, lead);
   } catch (error) {
     if (session.mode === 'cloud' && (error.code === '40001' || error.message === 'revision_conflict')) {
       toast('另一台设备已更新对局，正在载入最新进度，请重新操作。');
       connected = false;
     } else { toast(errorMessage(error)); if (session.mode === 'cloud') connected = false; }
   } finally {
-    if (!(await finishOperation()) && session.mode === 'cloud' && !connected) await refreshCloud();
+    if (!(await finishOperation()) && session.mode === 'cloud') await refreshCloud();
   }
 }
 function fillNames() {
   const previous = [...$('player-names').querySelectorAll('input')].map(input => input.value);
-  $('player-names').innerHTML = Array.from({ length: Number($('player-count').value) }, (_, index) => `<label>玩家 ${index + 1}<input name="player" maxlength="12" required autocomplete="off" value="${safe(previous[index] || ['小橘', '小蓝', '小绿', '小紫'][index])}"></label>`).join('');
+  $('player-names').innerHTML = Array.from({ length: Number($('player-count').value) }, (_, index) => { const animal = ANIMALS.find(item => item.id === setupAnimals[index]) || ANIMALS[index]; return `<div class="player-setup-row"><label class="player-name-field">玩家 ${index + 1}<input name="player" maxlength="12" required autocomplete="off" value="${safe(previous[index] || ['小橘', '小蓝', '小绿', '小紫'][index])}"></label><button type="button" class="animal-select" data-index="${index}" aria-label="为玩家${index + 1}选择动物，当前${animal.name}"><span class="animal-emoji">${animal.emoji}</span><span class="animal-name">${animal.name} ▾</span></button></div>`; }).join('');
+  $('player-names').querySelectorAll('.animal-select').forEach(node => { node.onclick = () => openAnimals({ index: Number(node.dataset.index) }); });
 }
+function openAnimals(target) {
+  if (busy) return;
+  animalTarget = target;
+  const playerIndex = target.playerId ? game.players.findIndex(player => player.id === target.playerId) : target.index;
+  const selected = target.playerId ? getPlayerAnimal(game.players[playerIndex], playerIndex).id : setupAnimals[playerIndex];
+  $('animal-options').innerHTML = ANIMALS.map(animal => `<button type="button" class="animal-option" data-animal-id="${animal.id}" aria-label="${animal.name}" aria-pressed="${animal.id === selected}"><span class="animal-emoji" aria-hidden="true">${animal.emoji}</span><span class="animal-name">${animal.name}</span></button>`).join('');
+  $('animal-options').querySelectorAll('button').forEach(node => { node.onclick = async () => {
+    const target = animalTarget; $('animal-dialog').close();
+    if (target.playerId) await perform({ type: 'SET_ANIMAL', playerId: target.playerId, animalId: node.dataset.animalId });
+    else { setupAnimals[target.index] = node.dataset.animalId; fillNames(); }
+  }; });
+  $('animal-dialog').showModal();
+}
+function renderSoundButton() {
+  $('sound-button').setAttribute('aria-pressed', String(soundEnabled));
+  $('sound-button').setAttribute('aria-label', soundEnabled ? '关闭游戏声音' : '开启游戏声音');
+  $('sound-button').innerHTML = `<span aria-hidden="true">${soundEnabled ? '🔊' : '🔇'}</span><span>声音${soundEnabled ? '开' : '关'}</span>`;
+}
+$('sound-button').onclick = () => {
+  soundEnabled = !soundEnabled; sound.setEnabled(soundEnabled);
+  writeStored(storage, STORAGE_KEY + ':sound', soundEnabled); renderSoundButton();
+  if (soundEnabled) Promise.resolve(sound.unlock()).then(() => sound.arrive());
+};
+$('animal-close').onclick = () => $('animal-dialog').close();
+renderSoundButton();
 function openSetup() {
   if (busy) return;
   $('mode-cloud').disabled = !cloud;
@@ -208,7 +326,8 @@ $('setup-form').onsubmit = async event => {
   const submit = $('setup-form').querySelector('[type=submit]'); submit.disabled = true;
   busy = true;
   try {
-    const next = createGame({ names: [...$('player-names').querySelectorAll('input')].map(input => input.value.trim()) });
+    const names = [...$('player-names').querySelectorAll('input')].map(input => input.value.trim());
+    const next = createGame({ names, animals: setupAnimals.slice(0, names.length) });
     const mode = $('mode-cloud').checked ? 'cloud' : 'local';
     let nextSession;
     if (mode === 'cloud') {
@@ -298,11 +417,13 @@ async function restore() {
 window.addEventListener('hashchange', () => { if (!busy) restore(); else pendingHash = location.hash; });
 window.addEventListener('online', () => refreshCloud(true));
 window.addEventListener('offline', () => { connected = false; render(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCloud(); });
+document.addEventListener('visibilitychange', () => {
+  sound.setEnabled(soundEnabled && !document.hidden);
+  if (!document.hidden) { refreshCloud(); if (!busy && restoreNewerLocalState()) render(); }
+});
 window.addEventListener('storage', event => {
-  if (event.key !== STORAGE_KEY || busy || session?.mode === 'cloud') return;
-  const other = readStored(storage, STORAGE_KEY);
-  if (other?.mode === 'local' && other.state?.id === game?.id && validateState(other.state)) { game = other.state; session = other; render(); }
+  if (session?.mode !== 'local' || busy || ![STORAGE_KEY, cacheKey(session)].includes(event.key)) return;
+  if (restoreNewerLocalState()) render();
 });
 setInterval(() => refreshCloud(), 3000);
 restore();

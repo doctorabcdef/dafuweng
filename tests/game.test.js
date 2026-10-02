@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOARD, PLAYER_COLORS, createGame, applyAction, getCurrentPlayer, getRent, getNetWorth, canBuild, validateState } from '../src/game.js';
+import { BOARD, PLAYER_COLORS, ANIMALS, createGame, applyAction, getCurrentPlayer, getPlayerAnimal, getRollMovement, getRent, getNetWorth, canBuild, validateState } from '../src/game.js';
 
 const fresh = (names = ['阿橙', '阿蓝']) => createGame({ names }, { id: 'test-game', now: '2026-10-02T00:00:00.000Z' });
 const act = (state, type, extra = {}) => applyAction(state, { type, ...extra });
@@ -244,4 +244,133 @@ test('timestamps stay monotonic and bounded logs survive a long game', () => {
   assert.equal(state.logs.length, 60);
   assert.equal(new Set(state.logs.map(log => log.id)).size, 60);
   assert.equal(validateState(state), true);
+});
+
+test('country names retain existing board positions, purchase costs and groups', () => {
+  const countries = BOARD.filter(tile => tile.type === 'property');
+  assert.deepEqual(countries.map(tile => tile.name), [
+    '中国', '日本', '韩国', '新加坡', '泰国', '印度', '法国', '德国', '意大利', '西班牙',
+    '英国', '瑞士', '美国', '加拿大', '巴西', '阿根廷', '澳大利亚', '新西兰', '埃及', '南非',
+  ]);
+  assert.deepEqual(countries.map(tile => [tile.id, tile.price, tile.group]), [
+    [1, 1000, 'coast'], [3, 1200, 'coast'], [5, 1400, 'garden'], [6, 1600, 'garden'],
+    [8, 1800, 'river'], [9, 1800, 'river'], [11, 2000, 'food'], [12, 2200, 'food'],
+    [14, 2400, 'history'], [15, 2400, 'history'], [16, 2600, 'bay'], [18, 2800, 'bay'],
+    [20, 3000, 'capital'], [21, 3200, 'capital'], [23, 2600, 'holiday'], [24, 2800, 'holiday'],
+    [26, 3000, 'nature'], [27, 3200, 'nature'], [29, 3600, 'gold'], [31, 4000, 'gold'],
+  ]);
+  assert.equal(BOARD[7].type, 'jail');
+  assert.equal(BOARD[25].type, 'goToJail');
+});
+
+test('animal choices persist while older saves keep working with indexed defaults', () => {
+  assert.equal(ANIMALS.length, 16);
+  assert.equal(new Set(ANIMALS.map(animal => animal.id)).size, ANIMALS.length);
+  assert.ok(ANIMALS.every(animal => animal.name && animal.emoji));
+  const created = createGame({ names: ['甲', '乙', '丙'], animals: ['panda', 'fox'] });
+  const restored = JSON.parse(JSON.stringify(created));
+  assert.equal(restored.schemaVersion, 1);
+  assert.equal(restored.players[0].animal, 'panda');
+  assert.equal(restored.players[1].animal, 'fox');
+  assert.equal(restored.players[2].animal, ANIMALS[2].id);
+  assert.equal(getPlayerAnimal(restored.players[0]).emoji, '🐼');
+  assert.equal(validateState(restored), true);
+
+  const legacy = fresh();
+  legacy.players.forEach(player => { delete player.animal; });
+  const before = JSON.stringify(legacy);
+  assert.equal(validateState(legacy), true);
+  assert.equal(getPlayerAnimal(legacy.players[1], 1).id, ANIMALS[1].id);
+  assert.equal(JSON.stringify(legacy), before);
+  assert.equal(validateState(act(legacy, 'ROLL', { dice: [1, 2] })), true);
+  const customized = act(legacy, 'SET_ANIMAL', { playerId: 'p2', animalId: 'penguin' });
+  assert.equal(customized.players[1].animal, 'penguin');
+  assert.equal(legacy.players[1].animal, undefined);
+});
+
+test('changing any player animal preserves all economic and turn state, even after gameover', () => {
+  const before = act(fresh(), 'ROLL', { dice: [1, 2] });
+  own(before, 1);
+  const changed = act(before, 'SET_ANIMAL', { playerId: 'p2', animalId: 'dolphin' });
+  const expected = structuredClone(before);
+  expected.players[1].animal = 'dolphin';
+  expected.updatedAt = changed.updatedAt;
+  assert.deepEqual(changed, expected);
+  assert.equal(getNetWorth(changed, 'p1'), getNetWorth(before, 'p1'));
+  assert.equal(getNetWorth(changed, 'p2'), getNetWorth(before, 'p2'));
+
+  const debt = fresh();
+  debt.players[0].cash = -1;
+  debt.phase = 'end';
+  const ended = act(debt, 'BANKRUPT');
+  const afterGame = act(ended, 'SET_ANIMAL', { playerId: 'p1', animalId: 'elephant' });
+  assert.equal(afterGame.players[0].animal, 'elephant');
+  assert.equal(afterGame.players[0].bankrupt, true);
+  assert.equal(afterGame.winnerId, ended.winnerId);
+  assert.equal(afterGame.phase, 'gameover');
+  assert.equal(validateState(afterGame), true);
+});
+
+test('unknown animals and players cannot enter saved state', () => {
+  assert.throws(() => createGame({ animals: ['dragon'] }));
+  assert.throws(() => createGame({ animals: null }));
+  const state = fresh();
+  assert.throws(() => act(state, 'SET_ANIMAL', { playerId: 'p2', animalId: 'dragon' }));
+  assert.throws(() => act(state, 'SET_ANIMAL', { playerId: 'p5', animalId: 'cat' }));
+  assert.throws(() => act(state, 'SET_ANIMAL', { animalId: 'cat' }));
+  state.players[0].animal = 'dragon';
+  assert.equal(validateState(state), false);
+});
+
+test('roll paths contain each visited tile and wrap without mutating or extending saved state', () => {
+  const before = fresh();
+  before.players[0].position = 31;
+  const after = act(before, 'ROLL', { dice: [1, 3] });
+  const beforeJSON = JSON.stringify(before), afterJSON = JSON.stringify(after);
+  assert.deepEqual(getRollMovement(before, after), { playerId: 'p1', steps: [0, 1, 2, 3] });
+  assert.equal(after.players[0].cash, before.players[0].cash + 2000);
+  assert.equal(JSON.stringify(before), beforeJSON);
+  assert.equal(JSON.stringify(after), afterJSON);
+  assert.deepEqual(Object.keys(after), Object.keys(before));
+  assert.deepEqual(getRollMovement(before, act(before, 'SET_ANIMAL', { playerId: 'p1', animalId: 'frog' })), { playerId: 'p1', steps: [] });
+  const mismatched = structuredClone(after);
+  mismatched.players[0].position = 1;
+  assert.deepEqual(getRollMovement(before, mismatched), { playerId: 'p1', steps: [] });
+});
+
+test('roll paths distinguish walking into jail, staying jailed and walking out with doubles', () => {
+  const before = fresh();
+  before.players[0].position = 23;
+  const jailed = act(before, 'ROLL', { dice: [1, 1] });
+  assert.deepEqual(getRollMovement(before, jailed), {
+    playerId: 'p1', steps: [24, 25, 7], redirects: [{ index: 2, from: 25, to: 7, reason: 'jail' }],
+  });
+  const inJail = structuredClone(jailed);
+  inJail.phase = 'roll';
+  const stayed = act(inJail, 'ROLL', { dice: [1, 2] });
+  assert.deepEqual(getRollMovement(inJail, stayed), { playerId: 'p1', steps: [] });
+  const released = act(inJail, 'ROLL', { dice: [2, 2] });
+  assert.deepEqual(getRollMovement(inJail, released), { playerId: 'p1', steps: [8, 9, 10, 11] });
+});
+
+test('chance movement traces include the landing tile before returning to start or entering jail', () => {
+  const before = fresh();
+  before.round = 8; // [1,1] landing on 2 selects the existing return-to-start card.
+  const home = act(before, 'ROLL', { dice: [1, 1] });
+  assert.equal(home.players[0].position, 0);
+  assert.deepEqual(getRollMovement(before, home), {
+    playerId: 'p1', steps: [1, 2, 0], redirects: [{ index: 2, from: 2, to: 0, reason: 'chance' }],
+  });
+  before.round = 1;
+  const jailed = act(before, 'ROLL', { dice: [1, 1] });
+  assert.deepEqual(getRollMovement(before, jailed), {
+    playerId: 'p1', steps: [1, 2, 7], redirects: [{ index: 2, from: 2, to: 7, reason: 'jail' }],
+  });
+  before.round = 5;
+  before.players[0].position = 31;
+  const wrappedHome = act(before, 'ROLL', { dice: [1, 2] });
+  assert.deepEqual(getRollMovement(before, wrappedHome), {
+    playerId: 'p1', steps: [0, 1, 2, 0], redirects: [{ index: 3, from: 2, to: 0, reason: 'chance' }],
+  });
+  assert.equal(wrappedHome.players[0].cash, before.players[0].cash + 4000);
 });

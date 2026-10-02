@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f6f4ee" />
-    <meta name="description" content="来一局轻松的大富翁：掷骰、买地、收租，与朋友一起经营你的城市。" />
-    <title>大富翁 · 城市漫游</title>
+    <meta name="description" content="和动物伙伴一起玩大富翁：掷骰、环游世界、购地建房，随时回来继续上一场旅程。" />
+    <title>大富翁 · 环球之旅</title>
     <link rel="stylesheet" href="./src/styles.css" />
     <script src="./config.js"></script>
     <script type="module" src="./src/app.js"></script>
@@ -15,10 +15,11 @@
       <header class="site-header">
         <a class="brand" href="./" aria-label="大富翁首页">
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-          <span class="brand-copy"><strong>大富翁<span class="brand-divider"> / </span><span class="brand-subtitle">城市漫游</span></strong><small>A LITTLE LUCK. A WHOLE CITY.</small></span>
+          <span class="brand-copy"><strong>大富翁<span class="brand-divider"> / </span><span class="brand-subtitle">环球之旅</span></strong><small>LITTLE PAWS. A BIG WORLD.</small></span>
         </a>
         <div class="header-actions">
           <span id="sync-status" class="sync-status" role="status">正在读取对局…</span>
+          <button id="sound-button" class="button secondary compact sound-button" type="button" aria-pressed="true" aria-label="游戏声音开关"><span aria-hidden="true">🔊</span><span>声音开</span></button>
           <button id="share-button" class="button secondary compact" type="button"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M11.8 6.4H8a4.2 4.2 0 0 0 0 8.4h3.8M8.2 5.2H12a4.2 4.2 0 0 1 0 8.4H8.2M6.8 10h6.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>分享对局</span></button>
           <button id="settings-button" class="button icon-button" type="button" aria-label="对局与云同步设置" title="云同步设置"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m8 2-.5 2-1.3.8-2-.6-2 3.5 1.5 1.4v1.8l-1.5 1.4 2 3.5 2-.6 1.3.8.5 2h4l.5-2 1.3-.8 2 .6 2-3.5-1.5-1.4V9.1l1.5-1.4-2-3.5-2 .6L12.5 4 12 2H8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.8" stroke="currentColor" stroke-width="1.4"/></svg></button>
         </div>
@@ -26,22 +27,22 @@
 
       <main>
         <section class="game-heading" aria-labelledby="page-heading">
-          <div><p class="eyebrow"><span class="tiny-star" aria-hidden="true">✳</span> 下一站，做城市的主人</p><h1 id="page-heading">好运，从这一掷开始。</h1></div>
-          <p class="heading-note">买下喜欢的街区，收集沿途的惊喜。<br />和朋友一起，把小小的机会变成大生意。</p>
+          <div><p class="eyebrow"><span class="tiny-star" aria-hidden="true">✳</span> 带上动物伙伴，环游全世界</p><h1 id="page-heading">好运，从这一掷开始。</h1></div>
+          <p class="heading-note">每到一个国家，就多一种可能。<br />和朋友一起，把世界变成旅行的主场。</p>
         </section>
 
         <div class="game-layout">
           <section class="board-section" aria-label="大富翁棋盘">
-            <div class="board-topline"><span><span class="live-dot" aria-hidden="true"></span> 城市棋盘</span><span>32 个转角，无限种可能</span></div>
+            <div class="board-topline"><span><span class="live-dot" aria-hidden="true"></span> 环球棋盘</span><span>32 个转角，无限种可能</span></div>
             <div id="board" class="board">
               <div id="board-center" class="board-center">
-                <div class="center-top"><span class="map-label">CITY TYCOON</span><span id="round-label" class="round-label">第 1 回合</span></div>
+                <div class="center-top"><span class="map-label">WORLD EXPLORERS</span><span id="round-label" class="round-label">第 1 回合</span></div>
                 <div class="center-art" aria-hidden="true">
                   <svg viewBox="0 0 260 95" fill="none"><path d="M14 85h232" stroke="#25334a" stroke-width="2" stroke-linecap="round"/><path d="M34 83V53h36v30M28 53l24-20 24 20" fill="#e8c971" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><path d="M48 84V66h10v18M96 83V19h35v64M88 20h50M101 11h25v8" fill="#a8c5c2" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><path d="M103 31h6m9 0h6m-21 13h6m9 0h6m-21 13h6m9 0h6m-21 13h6m9 0h6" stroke="#25334a" stroke-width="3"/><path d="M153 83V44h43v39M147 45l28-22 27 22" fill="#e99582" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><path d="M162 57h7m10 0h7m-24 12h7m10 0h7" stroke="#25334a" stroke-width="3"/><path d="M223 83V57M223 68c-24 1-16-29 0-31 15 2 24 33 0 31Z" fill="#afbf9d" stroke="#25334a" stroke-width="2" stroke-linejoin="round"/><circle cx="64" cy="15" r="6" fill="#e8c971"/><path d="M214 17h12m-6-6v12M17 31h8m-4-4v8" stroke="#e99582" stroke-width="2" stroke-linecap="round"/></svg>
                 </div>
-                <p id="turn-label" class="turn-label">欢迎来到你的城市</p>
-                <div id="dice-display" class="dice-display" aria-label="骰子点数" aria-live="polite">✦</div>
-                <p id="event-text" class="event-text" aria-live="polite">从一块小小的土地，开始你的财富故事。</p>
+                <p id="turn-label" class="turn-label">世界那么大，一起去看看</p>
+                <div id="dice-display" class="dice-display" aria-label="等待掷骰子" aria-live="polite"><span class="die-face" aria-hidden="true">⚄</span><span class="die-face" aria-hidden="true">⚂</span></div>
+                <p id="event-text" class="event-text" aria-live="polite">选一位动物伙伴，从第一步开始你的环球故事。</p>
                 <div id="actions" class="game-actions"></div>
                 <div class="center-bottom"><span class="center-route" aria-hidden="true">● ─ ─ ─ ─ →</span><span>路过起点，领取新的出发基金</span></div>
               </div>
@@ -51,23 +52,23 @@
 
           <aside class="game-sidebar" aria-label="玩家与地产">
             <section class="players-section" aria-labelledby="players-heading">
-              <div class="section-heading"><h2 id="players-heading">城市合伙人</h2><span class="section-kicker">PLAYERS</span></div>
+              <div class="section-heading"><h2 id="players-heading">环球旅行家</h2><span class="section-kicker">PLAYERS</span></div>
               <div id="players" class="players"></div>
             </section>
             <section class="property-section" aria-labelledby="property-heading">
-              <div class="section-heading"><h2 id="property-heading">街区情报</h2><span class="section-kicker">PROPERTY</span></div>
+              <div class="section-heading"><h2 id="property-heading">目的地情报</h2><span class="section-kicker">PROPERTY</span></div>
               <div id="property-panel" class="property-panel"><div class="property-empty"><span class="property-empty-icon" aria-hidden="true">⌖</span><p>哪一块，会是你的下一站？</p><small>点击棋盘上的地块，看看它的潜力。</small></div></div>
             </section>
-            <div class="sidebar-bottom"><p>每一步都算数，<br /><strong>慢慢成为这座城市的大富翁。</strong></p><button id="new-game-button" class="button secondary new-game-button" type="button"><span aria-hidden="true">＋</span> 开始新对局</button></div>
+            <div class="sidebar-bottom"><p>点击玩家的动物头像，可以更换伙伴。<br /><strong>带着好运，一步一步走遍世界。</strong></p><button id="new-game-button" class="button secondary new-game-button" type="button"><span aria-hidden="true">＋</span> 开始新对局</button></div>
           </aside>
         </div>
 
         <section class="log-section" aria-labelledby="logs-heading">
-          <div class="section-heading"><h2 id="logs-heading"><span class="log-heading-icon" aria-hidden="true">≋</span> 城市新鲜事</h2><span class="section-kicker">每一笔小生意，都值得记录</span></div>
+          <div class="section-heading"><h2 id="logs-heading"><span class="log-heading-icon" aria-hidden="true">≋</span> 环球旅行手记</h2><span class="section-kicker">每一站新故事，都值得记录</span></div>
           <ol id="logs" class="logs" role="log" aria-live="polite"><li class="empty-log">新故事正在路上，掷出你的第一颗骰子吧。</li></ol>
         </section>
       </main>
-      <footer class="site-footer"><span>大富翁 · 城市漫游</span><span>好朋友，好运气，好生意。</span></footer>
+      <footer class="site-footer"><span>大富翁 · 环球之旅</span><span>好朋友，好运气，好旅程。</span></footer>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -76,12 +77,12 @@
       <form id="setup-form">
         <div class="modal-eyebrow">A NEW ADVENTURE</div>
         <h2>一起，开启新旅程。</h2>
-        <p class="modal-description">选好你的城市合伙人，接下来就交给好运。</p>
+        <p class="modal-description">取个名字，选一位动物伙伴，接下来就交给好运。</p>
         <div class="field"><label for="player-count">参与人数</label><select id="player-count" name="playerCount"><option value="2">2 人 · 双人对决</option><option value="3">3 人 · 三人成市</option><option value="4">4 人 · 热闹开场</option></select></div>
         <div id="player-names" class="player-names"></div>
         <fieldset class="mode-fieldset"><legend>对局保存方式</legend><label class="mode-option"><input id="mode-local" type="radio" name="mode" value="local" checked /><span><strong>本机对局</strong><small>自动保存到当前浏览器，随时回来继续。</small></span></label><label class="mode-option"><input id="mode-cloud" type="radio" name="mode" value="cloud" /><span><strong>云端对局</strong><small>分享链接，在不同设备上继续同一局。</small></span></label></fieldset>
         <p id="setup-error" class="form-error" role="alert"></p>
-        <div class="modal-actions"><button id="setup-cancel" class="button secondary" type="button">取消</button><button class="button primary" type="submit">出发，去造城 <span aria-hidden="true">↗</span></button></div>
+        <div class="modal-actions"><button id="setup-cancel" class="button secondary" type="button">取消</button><button class="button primary" type="submit">出发，去旅行 <span aria-hidden="true">↗</span></button></div>
       </form>
     </dialog>
 
@@ -95,11 +96,18 @@
     </dialog>
 
     <dialog id="share-dialog" class="modal">
-      <div class="modal-eyebrow">GOOD THINGS ARE BETTER TOGETHER</div><h2>把这座城市，分享出去。</h2>
+      <div class="modal-eyebrow">GOOD THINGS ARE BETTER TOGETHER</div><h2>把这场旅程，分享出去。</h2>
       <p class="modal-description">云端对局可通过同一链接在其他设备打开并继续。持有链接的人可以查看和操作这场对局，请只分享给一起玩的朋友。</p>
       <div class="field"><label for="share-link">当前对局链接</label><input id="share-link" type="url" readonly /></div>
       <div class="modal-actions"><button id="share-close" class="button secondary" type="button">关闭</button><button id="share-copy" class="button primary" type="button">复制链接 <span aria-hidden="true">↗</span></button></div>
     </dialog>
-    <noscript><div class="noscript-message">这座城市需要 JavaScript 才能运行。请在浏览器中启用 JavaScript 后重新打开。</div></noscript>
+    <dialog id="animal-dialog" class="modal animal-modal" aria-labelledby="animal-heading">
+      <div class="modal-eyebrow">PICK YOUR TRAVEL BUDDY</div>
+      <h2 id="animal-heading">今天，和谁一起出发？</h2>
+      <p class="modal-description">选一位喜欢的动物伙伴，它会陪你走过每个国家。</p>
+      <div id="animal-options" class="animal-options" role="group" aria-label="选择动物伙伴"></div>
+      <div class="modal-actions"><button id="animal-close" class="button secondary" type="button">关闭</button></div>
+    </dialog>
+    <noscript><div class="noscript-message">环球之旅需要 JavaScript 才能运行。请在浏览器中启用 JavaScript 后重新打开。</div></noscript>
   </body>
 </html>

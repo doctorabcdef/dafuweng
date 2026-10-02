@@ -1,39 +1,62 @@
 // The complete, serializable game rules. No network or DOM dependencies.
 export const PLAYER_COLORS = Object.freeze(['#fb923c', '#38bdf8', '#a78bfa', '#34d399']);
+export const ANIMALS = Object.freeze([
+  { id: 'cat', name: '小猫', emoji: '🐱' },
+  { id: 'dog', name: '小狗', emoji: '🐶' },
+  { id: 'rabbit', name: '兔子', emoji: '🐰' },
+  { id: 'fox', name: '狐狸', emoji: '🦊' },
+  { id: 'panda', name: '熊猫', emoji: '🐼' },
+  { id: 'bear', name: '小熊', emoji: '🐻' },
+  { id: 'tiger', name: '老虎', emoji: '🐯' },
+  { id: 'lion', name: '狮子', emoji: '🦁' },
+  { id: 'koala', name: '考拉', emoji: '🐨' },
+  { id: 'frog', name: '青蛙', emoji: '🐸' },
+  { id: 'pig', name: '小猪', emoji: '🐷' },
+  { id: 'monkey', name: '猴子', emoji: '🐵' },
+  { id: 'penguin', name: '企鹅', emoji: '🐧' },
+  { id: 'chick', name: '小鸡', emoji: '🐤' },
+  { id: 'elephant', name: '大象', emoji: '🐘' },
+  { id: 'dolphin', name: '海豚', emoji: '🐬' },
+].map(Object.freeze));
+const ANIMAL_BY_ID = new Map(ANIMALS.map(animal => [animal.id, animal]));
+
+export function getPlayerAnimal(player, index = 0) {
+  return ANIMAL_BY_ID.get(player?.animal) ?? ANIMALS[(Number.isInteger(index) && index >= 0 ? index : 0) % ANIMALS.length];
+}
 
 export const BOARD = Object.freeze([
   { id: 0, name: '起点', type: 'start' },
-  { id: 1, name: '青岛海岸', type: 'property', color: '#22d3ee', price: 1000, baseRent: 150, group: 'coast' },
+  { id: 1, name: '中国', type: 'property', color: '#22d3ee', price: 1000, baseRent: 150, group: 'coast' },
   { id: 2, name: '奇遇', type: 'chance' },
-  { id: 3, name: '厦门沙坡尾', type: 'property', color: '#22d3ee', price: 1200, baseRent: 180, group: 'coast' },
+  { id: 3, name: '日本', type: 'property', color: '#22d3ee', price: 1200, baseRent: 180, group: 'coast' },
   { id: 4, name: '城市税', type: 'tax' },
-  { id: 5, name: '杭州西湖', type: 'property', color: '#4ade80', price: 1400, baseRent: 210, group: 'garden' },
-  { id: 6, name: '苏州园林', type: 'property', color: '#4ade80', price: 1600, baseRent: 240, group: 'garden' },
+  { id: 5, name: '韩国', type: 'property', color: '#4ade80', price: 1400, baseRent: 210, group: 'garden' },
+  { id: 6, name: '新加坡', type: 'property', color: '#4ade80', price: 1600, baseRent: 240, group: 'garden' },
   { id: 7, name: '探访 / 监狱', type: 'jail' },
-  { id: 8, name: '南京秦淮', type: 'property', color: '#60a5fa', price: 1800, baseRent: 270, group: 'river' },
-  { id: 9, name: '武汉江滩', type: 'property', color: '#60a5fa', price: 1800, baseRent: 270, group: 'river' },
+  { id: 8, name: '泰国', type: 'property', color: '#60a5fa', price: 1800, baseRent: 270, group: 'river' },
+  { id: 9, name: '印度', type: 'property', color: '#60a5fa', price: 1800, baseRent: 270, group: 'river' },
   { id: 10, name: '奇遇', type: 'chance' },
-  { id: 11, name: '成都锦里', type: 'property', color: '#fb923c', price: 2000, baseRent: 300, group: 'food' },
-  { id: 12, name: '重庆洪崖洞', type: 'property', color: '#fb923c', price: 2200, baseRent: 330, group: 'food' },
+  { id: 11, name: '法国', type: 'property', color: '#fb923c', price: 2000, baseRent: 300, group: 'food' },
+  { id: 12, name: '德国', type: 'property', color: '#fb923c', price: 2200, baseRent: 330, group: 'food' },
   { id: 13, name: '自由公园', type: 'parking' },
-  { id: 14, name: '西安城墙', type: 'property', color: '#f87171', price: 2400, baseRent: 360, group: 'history' },
-  { id: 15, name: '洛阳古城', type: 'property', color: '#f87171', price: 2400, baseRent: 360, group: 'history' },
-  { id: 16, name: '深圳湾', type: 'property', color: '#c084fc', price: 2600, baseRent: 390, group: 'bay' },
+  { id: 14, name: '意大利', type: 'property', color: '#f87171', price: 2400, baseRent: 360, group: 'history' },
+  { id: 15, name: '西班牙', type: 'property', color: '#f87171', price: 2400, baseRent: 360, group: 'history' },
+  { id: 16, name: '英国', type: 'property', color: '#c084fc', price: 2600, baseRent: 390, group: 'bay' },
   { id: 17, name: '奇遇', type: 'chance' },
-  { id: 18, name: '广州珠江', type: 'property', color: '#c084fc', price: 2800, baseRent: 420, group: 'bay' },
+  { id: 18, name: '瑞士', type: 'property', color: '#c084fc', price: 2800, baseRent: 420, group: 'bay' },
   { id: 19, name: '城市税', type: 'tax' },
-  { id: 20, name: '上海外滩', type: 'property', color: '#818cf8', price: 3000, baseRent: 450, group: 'capital' },
-  { id: 21, name: '北京王府井', type: 'property', color: '#818cf8', price: 3200, baseRent: 480, group: 'capital' },
+  { id: 20, name: '美国', type: 'property', color: '#818cf8', price: 3000, baseRent: 450, group: 'capital' },
+  { id: 21, name: '加拿大', type: 'property', color: '#818cf8', price: 3200, baseRent: 480, group: 'capital' },
   { id: 22, name: '奇遇', type: 'chance' },
-  { id: 23, name: '丽江古城', type: 'property', color: '#f472b6', price: 2600, baseRent: 390, group: 'holiday' },
-  { id: 24, name: '大理洱海', type: 'property', color: '#f472b6', price: 2800, baseRent: 420, group: 'holiday' },
+  { id: 23, name: '巴西', type: 'property', color: '#f472b6', price: 2600, baseRent: 390, group: 'holiday' },
+  { id: 24, name: '阿根廷', type: 'property', color: '#f472b6', price: 2800, baseRent: 420, group: 'holiday' },
   { id: 25, name: '前往监狱', type: 'goToJail' },
-  { id: 26, name: '桂林山水', type: 'property', color: '#2dd4bf', price: 3000, baseRent: 450, group: 'nature' },
-  { id: 27, name: '张家界', type: 'property', color: '#2dd4bf', price: 3200, baseRent: 480, group: 'nature' },
+  { id: 26, name: '澳大利亚', type: 'property', color: '#2dd4bf', price: 3000, baseRent: 450, group: 'nature' },
+  { id: 27, name: '新西兰', type: 'property', color: '#2dd4bf', price: 3200, baseRent: 480, group: 'nature' },
   { id: 28, name: '城市税', type: 'tax' },
-  { id: 29, name: '香港维港', type: 'property', color: '#fbbf24', price: 3600, baseRent: 540, group: 'gold' },
+  { id: 29, name: '埃及', type: 'property', color: '#fbbf24', price: 3600, baseRent: 540, group: 'gold' },
   { id: 30, name: '奇遇', type: 'chance' },
-  { id: 31, name: '澳门南湾', type: 'property', color: '#fbbf24', price: 4000, baseRent: 600, group: 'gold' },
+  { id: 31, name: '南非', type: 'property', color: '#fbbf24', price: 4000, baseRent: 600, group: 'gold' },
 ].map(Object.freeze));
 
 const ESTATES = BOARD.filter(tile => tile.type === 'property');
@@ -53,9 +76,12 @@ function timestamp(value) {
   return date.toISOString();
 }
 
-export function createGame({ names = ['小橙', '小蓝'], startingCash = 15000 } = {}, { id, now = Date.now() } = {}) {
+export function createGame({ names = ['小橙', '小蓝'], startingCash = 15000, animals } = {}, { id, now = Date.now() } = {}) {
   if (!Array.isArray(names) || names.length < 2 || names.length > 4 || names.some(name => typeof name !== 'string' || !name.trim() || name.trim().length > 16)) {
     throw new Error('请填写 2–4 位玩家的名字，每个名字最多 16 个字。');
+  }
+  if (animals !== undefined && (!Array.isArray(animals) || animals.length > names.length || animals.some(animal => !ANIMAL_BY_ID.has(animal)))) {
+    throw new Error('请选择有效的动物角色。');
   }
   if (!money(startingCash) || startingCash < 1000 || startingCash > 1000000) throw new Error('初始资金须为 1000–1000000 的整数。');
   if (id !== undefined && !shortString(id, 100)) throw new Error('对局编号不正确。');
@@ -63,7 +89,7 @@ export function createGame({ names = ['小橙', '小蓝'], startingCash = 15000 
   const gameId = id ?? globalThis.crypto?.randomUUID?.() ?? `game-${Date.parse(createdAt)}-${Math.random().toString(36).slice(2, 10)}`;
   const players = names.map((name, index) => ({
     id: `p${index + 1}`, name: name.trim(), color: PLAYER_COLORS[index], position: 0,
-    cash: startingCash, jailed: 0, bankrupt: false,
+    cash: startingCash, jailed: 0, bankrupt: false, animal: getPlayerAnimal({ animal: animals?.[index] }, index).id,
   }));
   const lastEvent = `欢迎来到城市大富翁！${players[0].name}先掷骰。`;
   return {
@@ -127,6 +153,7 @@ export function validateState(value) {
       if (!Number.isInteger(player.jailed) || player.jailed < 0 || player.jailed > 2 || typeof player.bankrupt !== 'boolean') return false;
       if (player.jailed > 0 && player.position !== 7) return false;
       if (player.bankrupt && (player.cash !== 0 || player.jailed !== 0)) return false;
+      if (player.animal !== undefined && !ANIMAL_BY_ID.has(player.animal)) return false;
       ids.add(player.id);
     }
     if (!Number.isInteger(value.currentPlayer) || value.currentPlayer < 0 || value.currentPlayer >= value.players.length || getCurrentPlayer(value).bankrupt) return false;
@@ -181,14 +208,25 @@ function nextTurn(state) {
   log(state, `轮到${getCurrentPlayer(state).name}，准备掷骰。`);
 }
 
-function jail(state, player) {
-  player.position = 7;
+function movePlayer(player, destination, trace, reason) {
+  if (trace) {
+    if (reason) {
+      trace.redirects ??= [];
+      trace.redirects.push({ index: trace.steps.length, from: player.position, to: destination, reason });
+    }
+    trace.steps.push(destination);
+  }
+  player.position = destination;
+}
+
+function jail(state, player, trace) {
+  movePlayer(player, 7, trace, 'jail');
   player.jailed = 2;
   state.phase = 'end';
   log(state, `${player.name}进入监狱，最多停留 2 回合；掷出双数或支付 ¥500 可提前出狱。`);
 }
 
-function chance(state, player) {
+function chance(state, player, trace) {
   // Dice + game progress choose the card deterministically, so synchronized
   // devices replay exactly the same action without a second random draw.
   const card = (state.dice[0] * 7 + state.dice[1] * 3 + state.round + state.currentPlayer + player.position) % 8;
@@ -196,13 +234,13 @@ function chance(state, player) {
   if (card === 1) { player.cash -= 600; log(state, `奇遇 · 房屋修缮，${player.name}支付 ¥600。`); }
   if (card === 2) { player.cash += 800; log(state, `奇遇 · 幸运奖金！${player.name}获得 ¥800。`); }
   if (card === 3) { player.cash -= 1000; log(state, `奇遇 · 旅行开销，${player.name}支付 ¥1,000。`); }
-  if (card === 4) { player.position = 0; player.cash += 2000; log(state, `奇遇 · 返回起点！${player.name}领取 ¥2,000。`); }
-  if (card === 5) jail(state, player);
+  if (card === 4) { movePlayer(player, 0, trace, 'chance'); player.cash += 2000; log(state, `奇遇 · 返回起点！${player.name}领取 ¥2,000。`); }
+  if (card === 5) jail(state, player, trace);
   if (card === 6) { player.cash += 1500; log(state, `奇遇 · 城市建设奖！${player.name}获得 ¥1,500。`); }
   if (card === 7) { player.cash += 500; log(state, `奇遇 · 发现城市宝藏！${player.name}获得 ¥500。`); }
 }
 
-function land(state, player) {
+function land(state, player, trace) {
   const tile = BOARD[player.position];
   state.phase = 'end';
   if (tile.type === 'property') {
@@ -223,9 +261,9 @@ function land(state, player) {
     player.cash -= 800;
     log(state, `${player.name}缴纳城市税 ¥800。`);
   } else if (tile.type === 'chance') {
-    chance(state, player);
+    chance(state, player, trace);
   } else if (tile.type === 'goToJail') {
-    jail(state, player);
+    jail(state, player, trace);
   } else if (tile.type === 'start') {
     log(state, `${player.name}抵达起点。继续向城市梦想出发！`);
   } else if (tile.type === 'jail') {
@@ -238,12 +276,16 @@ function land(state, player) {
 
 /** Atomically return a new state. The caller supplies dice and optionally now. */
 export function applyAction(previous, action) {
+  return executeAction(previous, action);
+}
+
+function executeAction(previous, action, trace) {
   if (!validateState(previous)) throw new Error('对局存档无效，请恢复有效存档。');
   if (!isRecord(action) || typeof action.type !== 'string') throw new Error('无效的游戏操作。');
-  if (previous.phase === 'gameover') throw new Error('本局已结束，请开始新对局。');
+  if (previous.phase === 'gameover' && action.type !== 'SET_ANIMAL') throw new Error('本局已结束，请开始新对局。');
   const state = structuredClone(previous);
   const player = getCurrentPlayer(state);
-  if (action.playerId !== undefined && action.playerId !== player.id) throw new Error('还没有轮到这位玩家。');
+  if (action.type !== 'SET_ANIMAL' && action.playerId !== undefined && action.playerId !== player.id) throw new Error('还没有轮到这位玩家。');
   const requireCash = amount => {
     if (player.cash < amount) throw new Error('现金不足，请先抵押地产筹集资金。');
   };
@@ -257,6 +299,13 @@ export function applyAction(previous, action) {
   };
 
   switch (action.type) {
+    case 'SET_ANIMAL': {
+      const target = state.players.find(item => item.id === action.playerId);
+      if (!target) throw new Error('找不到要更换角色的玩家。');
+      if (!ANIMAL_BY_ID.has(action.animalId)) throw new Error('请选择有效的动物角色。');
+      target.animal = action.animalId;
+      break;
+    }
     case 'ROLL': {
       requirePhase('roll');
       requireCash(0);
@@ -278,8 +327,8 @@ export function applyAction(previous, action) {
         player.cash += 2000;
         log(state, `${player.name}经过起点，领取 ¥2,000。`);
       }
-      player.position = (player.position + steps) % BOARD.length;
-      land(state, player);
+      for (let step = 0; step < steps; step += 1) movePlayer(player, (player.position + 1) % BOARD.length, trace);
+      land(state, player, trace);
       break;
     }
     case 'BUY': {
@@ -357,4 +406,27 @@ export function applyAction(previous, action) {
   state.updatedAt = timestamp(Math.max(Date.parse(previous.updatedAt) + 1, requestedTime));
   if (!validateState(state)) throw new Error('操作超出游戏允许范围。');
   return state;
+}
+
+/**
+ * Replay a completed roll through the same movement helpers, without changing
+ * either saved state. steps excludes the starting tile and includes redirect
+ * destinations; redirects marks their zero-based indexes for jump animations.
+ * Non-roll or mismatched snapshots return an empty path instead of guessing.
+ */
+export function getRollMovement(before, after) {
+  const playerId = before?.players?.[before.currentPlayer]?.id ?? null;
+  const empty = { playerId, steps: [] };
+  if (!validateState(before) || !validateState(after) || before.id !== after.id || before.phase !== 'roll' ||
+      before.currentPlayer !== after.currentPlayer || before.round !== after.round || !after.dice || !['buy', 'end'].includes(after.phase)) return empty;
+  const trace = { playerId, steps: [] };
+  try {
+    const replay = executeAction(before, { type: 'ROLL', dice: after.dice, now: after.updatedAt }, trace);
+    const expectedPlayer = getCurrentPlayer(replay);
+    const actualPlayer = getCurrentPlayer(after);
+    if (replay.phase !== after.phase || expectedPlayer.position !== actualPlayer.position || expectedPlayer.jailed !== actualPlayer.jailed) return empty;
+    return trace;
+  } catch {
+    return empty;
+  }
 }
